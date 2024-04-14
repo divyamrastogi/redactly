@@ -1,6 +1,10 @@
 import fitz  # Import PyMuPDF
 import re  # Import regex module
 
+#r'£\d{1,3}(,\d{3})*(\.\d+)?'
+currency_pattern = r'£\d{1,3}(,\d{3})*(\.\d+)?'  # Pattern to match currency amounts
+date_pattern = r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\b'  # Pattern to match dates like "Mar 7"
+
 def get_transaction_details_y_coord(page, section_title):
     """
     Finds the y-coordinate of the bottom of the "Transaction Details" section.
@@ -102,13 +106,3 @@ def redact_transactions(file_path, section_title, keep_keywords):
     doc.close()
 
     return redacted_file_path
-
-# Example usage
-file_path = "statement.pdf"  # Update with the correct file path
-keep_keywords = ['TFL', 'Travel', 'Trainline']
-section_title = "Transaction Details"
-#r'£\d{1,3}(,\d{3})*(\.\d+)?'
-currency_pattern = r'£\d{1,3}(,\d{3})*(\.\d+)?'  # Pattern to match currency amounts
-date_pattern = r'\b(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2}\b'  # Pattern to match dates like "Mar 7"
-redacted_file_path = redact_transactions(file_path, section_title, keep_keywords)
-print(f"Redacted PDF saved as: {redacted_file_path}")
