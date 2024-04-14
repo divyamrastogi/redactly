@@ -30,7 +30,7 @@ def redact():
     pdf.save(temp_pdf_path)
 
     # Redact the PDF
-    redacted_pdf_path = redact_transactions(temp_pdf_path, section_title, keywords)
+    redacted_pdf_path = redact_transactions(temp_pdf_path, section_title, keywords, pdf.filename)
 
     # Send the redacted PDF file to the user
     return send_file(redacted_pdf_path, as_attachment=True)

@@ -26,7 +26,7 @@ def get_transaction_details_y_coord(page, section_title):
                         return span['bbox'][3]
     return None
 
-def redact_transactions(file_path, section_title, keep_keywords):
+def redact_transactions(file_path, section_title, keep_keywords, filename):
     """
     Redacts transactions that do not contain specified keywords from the PDF file,
     based on the integer y-coordinate.
@@ -101,7 +101,7 @@ def redact_transactions(file_path, section_title, keep_keywords):
 
         page.apply_redactions()  # Apply redactions for the current page
 
-    redacted_file_path = "redacted_" + file_path
+    redacted_file_path = "redacted_" + filename
     doc.save(redacted_file_path)  # Save the redacted document
     doc.close()
 
