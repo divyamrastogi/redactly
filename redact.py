@@ -106,3 +106,9 @@ def redact_transactions(file_path, section_title, keep_keywords, filename):
     doc.close()
 
     return redacted_file_path
+
+input_pdf = 'temp_input.pdf'
+output_pdf = 'output.pdf'
+whitelist = ['TFL', 'Transport for London', 'Trainline']
+
+redact_transactions(input_pdf, "Transaction Details", whitelist, output_pdf)

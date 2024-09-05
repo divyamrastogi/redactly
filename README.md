@@ -1,12 +1,23 @@
-# AMEX Credit Card Transaction PDF Redactor
+# Simple PDF Redactor
 
-Whitelist keyword-based transactions from AMEX bills.
+This is a basic Flask application that redacts PDFs based on user-provided keywords.
 
-## Use case
-You can maintain a whitelist of keywords you want to keep in your AMEX bill for reimbursement. Other transactions get redacted once you run the script on the PDF file.
+## Setup
 
-## How to run
-The app uses flask to run a webserver where you can supply keywords and the file you want to redact transactions from.
-```
-python app.py
-```
+1. Install the required packages:
+   ```
+   pip install -r requirements.txt
+   ```
+
+2. Run the application:
+   ```
+   python app.py
+   ```
+
+3. Open a web browser and go to `http://127.0.0.1:5000/`
+
+4. Upload a PDF file, enter keywords to redact (comma-separated), and click "Redact".
+
+5. The redacted PDF will be downloaded automatically.
+
+Note: This is a basic implementation and should be enhanced for production use.
