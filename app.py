@@ -16,7 +16,7 @@ HTML_TEMPLATE = '''
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AMEX Credit Card Statement Redaction Tool | Whitelist Transactions</title>
-    <meta name="description" content="Redact your AMEX credit card statements easily. Keep only the transactions you want by specifying keywords. Perfect for expense reports and financial privacy.">
+    <meta name="description" content="Redact your AMEX credit card statements easily. Keep only the transactions you want by specifying keywords. Perfect for redacting reimbursements and financial privacy.">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
 </head>
@@ -26,7 +26,7 @@ HTML_TEMPLATE = '''
         <p class="mt-2 text-xl">Whitelist Your Important Transactions</p>
     </header>
     <main class="flex-grow container mx-auto px-4 py-8">
-        <div class="flex flex-col md:flex-row gap-8">
+        <div class="flex flex-col md:flex-row gap-8 mb-8">
             <section class="bg-white p-8 rounded-lg shadow-md md:w-1/2">
                 <h2 class="text-2xl font-bold mb-4 text-gray-800">How It Works</h2>
                 <p class="text-gray-600 mb-4">
@@ -41,7 +41,7 @@ HTML_TEMPLATE = '''
                     <strong>Example:</strong> If you want to keep only work-related expenses, you might use keywords like "Office Supplies", "Travel", or "Client Dinner".
                 </p>
                 <p class="text-gray-600">
-                    Perfect for creating expense reports, maintaining financial privacy, or focusing on specific types of transactions.
+                    Perfect for submitting reimbursements by maintaining financial privacy, or focusing on specific types of transactions.
                 </p>
             </section>
             <div class="bg-white p-8 rounded-lg shadow-md md:w-1/2">
@@ -68,6 +68,20 @@ HTML_TEMPLATE = '''
                 </form>
             </div>
         </div>
+        
+        <!-- Google Form iframe section -->
+        <section class="bg-white p-8 rounded-lg shadow-md mt-8">
+            <h2 class="text-2xl font-bold mb-6 text-center text-gray-800">Need a Custom Solution?</h2>
+            <p class="text-gray-600 mb-4 text-center">
+                If you need a modified version of this tool for your specific needs, please fill out the form below:
+            </p>
+            <div class="aspect-w-16 aspect-h-9">
+                <iframe src="https://docs.google.com/forms/d/e/1FAIpQLSd2PkHw7ATLfQYwL0CwdkKOnLynPU6mRweu5Zs5PCkKBeVB1g/viewform?usp=sf_link" 
+                        class="w-full h-[600px]" frameborder="0" marginheight="0" marginwidth="0">
+                    Loading…
+                </iframe>
+            </div>
+        </section>
     </main>
     <footer class="w-full text-center py-4 bg-gray-200">
         <p class="text-gray-600">&copy; 2024 AMEX Statement Redaction Tool. All rights reserved.</p>
