@@ -9,6 +9,25 @@ app = Flask(__name__)
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
+# Function to handle the usage counter
+def update_usage_counter():
+    counter_file = 'usage_counter.txt'
+    try:
+        if os.path.exists(counter_file):
+            with open(counter_file, 'r+') as f:
+                count = int(f.read() or '0') + 1
+                f.seek(0)
+                f.write(str(count))
+                f.truncate()
+        else:
+            count = 1
+            with open(counter_file, 'w') as f:
+                f.write(str(count))
+        return count
+    except Exception as e:
+        logger.error(f"Error updating usage counter: {str(e)}")
+        return None
+
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
 <html lang="en">
@@ -19,11 +38,24 @@ HTML_TEMPLATE = '''
     <meta name="description" content="Redact your AMEX credit card statements easily. Keep only the transactions you want by specifying keywords. Perfect for redacting reimbursements and financial privacy.">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-SY9PXXMVD8"></script>
+    <script>
+    window.dataLayer = window.dataLayer || [];
+    function gtag(){dataLayer.push(arguments);}
+    gtag('js', new Date());
+
+    gtag('config', 'G-SY9PXXMVD8');
+    </script>
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col">
     <header class="w-full bg-indigo-600 text-white text-center py-8">
         <h1 class="text-4xl font-bold">AMEX Statement Redaction Tool</h1>
         <p class="mt-2 text-xl">Whitelist Your Important Transactions</p>
+        {% if usage_count %}
+        <p class="mt-2 text-sm">This tool has been used {{ usage_count }} times</p>
+        {% endif %}
     </header>
     <main class="flex-grow container mx-auto px-4 py-8">
         <div class="flex flex-col md:flex-row gap-8 mb-8">
@@ -94,6 +126,7 @@ HTML_TEMPLATE = '''
 def index():
     message = None
     error = False
+    usage_count = update_usage_counter()
 
     if request.method == 'POST':
         if 'pdf' not in request.files:
@@ -126,7 +159,7 @@ def index():
                     if os.path.exists(input_path):
                         os.remove(input_path)
 
-    return render_template_string(HTML_TEMPLATE, message=message, error=error)
+    return render_template_string(HTML_TEMPLATE, message=message, error=error, usage_count=usage_count)
 
 @app.route('/download/<path:filename>')
 def download_file(filename):
