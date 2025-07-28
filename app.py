@@ -2,6 +2,9 @@ from flask import Flask, request, send_file, after_this_request, render_template
 import os
 import logging
 from redact_transactions import redact_transactions
+from redact_generic import redact_pdf_generic
+from redact_financial_details import redact_barclaycard_with_privacy, redact_amex_with_privacy
+from provider_config import get_all_providers
 
 app = Flask(__name__)
 
@@ -34,8 +37,8 @@ HTML_TEMPLATE = '''
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AMEX Credit Card Statement Redaction Tool | Whitelist Transactions</title>
-    <meta name="description" content="Redact your AMEX credit card statements easily. Keep only the transactions you want by specifying keywords. Perfect for redacting reimbursements and financial privacy.">
+    <title>Credit Card Statement Redaction Tool | Whitelist Transactions</title>
+    <meta name="description" content="Redact your credit card statements easily. Supports AMEX, Barclaycard, Visa, Mastercard and more. Keep only the transactions you want by specifying keywords. Perfect for expense reimbursements and financial privacy.">
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     
@@ -51,8 +54,9 @@ HTML_TEMPLATE = '''
 </head>
 <body class="bg-gray-100 min-h-screen flex flex-col">
     <header class="w-full bg-indigo-600 text-white text-center py-8">
-        <h1 class="text-4xl font-bold">AMEX Statement Redaction Tool</h1>
+        <h1 class="text-4xl font-bold">Credit Card Statement Redaction Tool</h1>
         <p class="mt-2 text-xl">Whitelist Your Important Transactions</p>
+        <p class="mt-1 text-sm text-gray-300">Supports AMEX, Barclaycard, Visa, Mastercard and more</p>
         {% if usage_count %}
         <p class="mt-2 text-sm">This tool has been used {{ usage_count }} times</p>
         {% endif %}
@@ -62,10 +66,11 @@ HTML_TEMPLATE = '''
             <section class="bg-white p-8 rounded-lg shadow-md md:w-1/2">
                 <h2 class="text-2xl font-bold mb-4 text-gray-800">How It Works</h2>
                 <p class="text-gray-600 mb-4">
-                    This tool is designed specifically for AMEX credit card statements. It allows you to:
+                    This tool works with multiple credit card providers including AMEX, Barclaycard, Visa, Mastercard and more. It allows you to:
                 </p>
                 <ul class="list-disc list-inside text-gray-600 mb-4">
-                    <li>Upload your AMEX statement PDF</li>
+                    <li>Upload your credit card statement PDF</li>
+                    <li>Auto-detect provider or manually select</li>
                     <li>Specify keywords for transactions you want to keep</li>
                     <li>Automatically redact all other transactions</li>
                 </ul>
@@ -85,7 +90,17 @@ HTML_TEMPLATE = '''
                 {% endif %}
                 <form method="post" enctype="multipart/form-data" class="space-y-4">
                     <div>
-                        <label for="pdf" class="block text-sm font-medium text-gray-700">Select AMEX Statement PDF</label>
+                        <label for="provider" class="block text-sm font-medium text-gray-700">Credit Card Provider</label>
+                        <select name="provider" id="provider" 
+                                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                            {% for value, display in providers %}
+                            <option value="{{ value }}" {% if value == 'auto' %}selected{% endif %}>{{ display }}</option>
+                            {% endfor %}
+                        </select>
+                        <p class="mt-1 text-xs text-gray-500">Leave as Auto-detect for automatic provider detection</p>
+                    </div>
+                    <div>
+                        <label for="pdf" class="block text-sm font-medium text-gray-700">Select Credit Card Statement PDF</label>
                         <input type="file" name="pdf" id="pdf" accept=".pdf" required
                                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
                     </div>
@@ -94,6 +109,39 @@ HTML_TEMPLATE = '''
                         <input type="text" name="keywords" id="keywords" placeholder="e.g. Office Supplies, Travel, Client Dinner" required
                                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
                     </div>
+                    <div id="privacy-option" class="hidden">
+                        <div class="flex items-center">
+                            <input type="checkbox" name="enhanced_privacy" id="enhanced_privacy" 
+                                   class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
+                            <label for="enhanced_privacy" class="ml-2 block text-sm text-gray-700">
+                                <strong>Enhanced Financial Privacy</strong> (Barclaycard & AMEX)
+                            </label>
+                        </div>
+                        <p class="mt-1 text-xs text-gray-500">
+                            Also redact personal details, account numbers, balances, and financial information while preserving statement structure
+                        </p>
+                    </div>
+                    <script>
+                        // Show/hide privacy option based on provider selection
+                        document.getElementById('provider').addEventListener('change', function() {
+                            const privacyOption = document.getElementById('privacy-option');
+                            const selectedProvider = this.value;
+                            if (selectedProvider === 'barclaycard' || selectedProvider === 'amex_uk' || selectedProvider === 'auto') {
+                                privacyOption.classList.remove('hidden');
+                            } else {
+                                privacyOption.classList.add('hidden');
+                                document.getElementById('enhanced_privacy').checked = false;
+                            }
+                        });
+                        
+                        // Show on page load if barclaycard is selected
+                        document.addEventListener('DOMContentLoaded', function() {
+                            const provider = document.getElementById('provider').value;
+                            if (provider === 'barclaycard' || provider === 'amex_uk' || provider === 'auto') {
+                                document.getElementById('privacy-option').classList.remove('hidden');
+                            }
+                        });
+                    </script>
                     <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
                         Redact PDF
                     </button>
@@ -127,6 +175,9 @@ def index():
     message = None
     error = False
     usage_count = update_usage_counter()
+    
+    # Get providers for dropdown
+    providers = get_all_providers()
 
     if request.method == 'POST':
         if 'pdf' not in request.files:
@@ -140,14 +191,42 @@ def index():
             elif file:
                 input_path = 'temp_input.pdf'
                 file.save(input_path)
-                keywords = request.form.get('keywords', '').split(',')
-                section_title = "Transaction Details"  # Assuming this is constant
+                keywords = [k.strip() for k in request.form.get('keywords', '').split(',') if k.strip()]
+                provider = request.form.get('provider', 'auto')
+                enhanced_privacy = request.form.get('enhanced_privacy') == 'on'
                 
                 try:
                     output_filename = f"redacted_{file.filename}"
-                    redacted_file_path, total_remaining = redact_transactions(input_path, section_title, keywords, output_filename)
+                    
+                    # Check if enhanced privacy is requested and provider supports it
+                    if enhanced_privacy:
+                        if provider == 'barclaycard' or (provider == 'auto' and 'barclaycard' in file.filename.lower()):
+                            # Use enhanced financial privacy redaction for Barclaycard
+                            redacted_file_path, total_remaining = redact_barclaycard_with_privacy(
+                                input_path, keywords, output_filename, redact_financial=True
+                            )
+                        elif provider in ['amex_uk', 'amex'] or (provider == 'auto' and ('amex' in file.filename.lower() or 'express' in file.filename.lower())):
+                            # Use enhanced financial privacy redaction for AMEX
+                            redacted_file_path, total_remaining = redact_amex_with_privacy(
+                                input_path, keywords, output_filename, redact_financial=True
+                            )
+                        else:
+                            # Use standard generic redaction if provider doesn't support enhanced privacy
+                            redacted_file_path, total_remaining = redact_pdf_generic(input_path, keywords, output_filename, provider)
+                    else:
+                        # Use standard generic redaction
+                        redacted_file_path, total_remaining = redact_pdf_generic(input_path, keywords, output_filename, provider)
+                    
+                    # Determine currency symbol based on provider/amount
+                    currency_symbol = '£'  # Default to GBP for now
+                    
+                    # Build success message
+                    privacy_note = ""
+                    if enhanced_privacy and (provider == 'barclaycard' or provider == 'auto'):
+                        privacy_note = "<br><span class='text-sm text-green-600'>✓ Enhanced Financial Privacy applied - credit limits, balances, and payment amounts redacted</span>"
+                    
                     message = f'''
-                    Total of remaining transactions: £{total_remaining:.2f}<br>
+                    Total of remaining transactions: {currency_symbol}{total_remaining:.2f}{privacy_note}<br>
                     <a href="/download/{redacted_file_path}" class="text-indigo-600 hover:text-indigo-800">Download Redacted PDF</a>
                     '''
                 except Exception as e:
@@ -159,7 +238,7 @@ def index():
                     if os.path.exists(input_path):
                         os.remove(input_path)
 
-    return render_template_string(HTML_TEMPLATE, message=message, error=error, usage_count=usage_count)
+    return render_template_string(HTML_TEMPLATE, message=message, error=error, usage_count=usage_count, providers=providers)
 
 @app.route('/download/<path:filename>')
 def download_file(filename):
@@ -175,4 +254,4 @@ def download_file(filename):
     return send_file(filename, as_attachment=True)
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=True, port=5001)
