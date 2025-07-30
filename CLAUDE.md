@@ -4,15 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-This is a Flask web application for redacting credit card statements from multiple providers. Users upload a PDF, select their credit card provider (or use auto-detection), and specify keywords - transactions matching those keywords are kept while all others are redacted.
+This is a Flask web application for redacting credit card statements from American Express and Barclaycard. Users upload a PDF, select their credit card provider (or use auto-detection), and specify keywords - transactions matching those keywords are kept while all others are redacted.
 
 **Supported Providers:**
-- American Express (UK)
+- American Express
 - Barclaycard
-- Visa
-- Mastercard
-- Chase
-- Generic/Other (fallback)
 
 ## Development Commands
 
@@ -79,30 +75,19 @@ The application uses a modular architecture with provider-specific configuration
 
 ## Important Notes
 
-- **Multi-provider support**: Works with AMEX, Barclaycard, Visa, Mastercard, Chase, and generic statements
-- **Enhanced Privacy Options**: Barclaycard and AMEX support additional financial privacy redaction
-- **Auto-detection**: Automatically identifies provider and transaction format
-- **Span-by-span Processing**: Replaced complex multi-line parser with simple, reliable approach
+- **Dual-provider support**: Works with AMEX and Barclaycard statements only
+- **Enhanced Privacy Options**: Both providers support additional financial privacy redaction
+- **Auto-detection**: Automatically identifies provider from PDF content
+- **Span-by-span Processing**: Simple, reliable approach for transaction processing
 - No authentication or user management - it's a public tool
 - No database - only file-based storage for the usage counter
 - Google Analytics is integrated for usage tracking
 - The `node_modules` directory exists but appears unused (no package.json)
 
-## Adding New Providers
+## Provider Configuration
 
-To add support for a new credit card provider:
+The application is specifically configured for:
+- **American Express**: MMM DD date format, multi-line transactions, £ currency
+- **Barclaycard**: DD MMM date format, multi-line transactions, £ currency
 
-1. **Add provider config** in `provider_config.py`:
-   ```python
-   'new_provider': ProviderConfig(
-       name='new_provider',
-       display_name='New Provider',
-       date_patterns=[...],
-       currency_patterns=[...],
-       section_headers=[...],
-       transaction_structure='auto'  # or 'single_line'/'multi_line'
-   )
-   ```
-
-2. **Add detection rules** in `detect_provider()` function
-3. **Test with sample PDFs** to ensure patterns work correctly
+Both providers have enhanced privacy redaction support that removes personal and financial details while preserving whitelisted transactions.

@@ -1,14 +1,12 @@
 # PDF Credit Card Statement Redaction Tool
 
-A Flask web application for redacting credit card statements from multiple providers. Users upload a PDF, select their credit card provider (or use auto-detection), and specify keywords - transactions matching those keywords are kept while all others are redacted.
+A Flask web application for redacting American Express and Barclaycard credit card statements. Users upload a PDF, select their credit card provider (or use auto-detection), and specify keywords - transactions matching those keywords are kept while all others are redacted.
 
 ## Features
 
-### 🏦 Multi-Provider Support
-- **American Express (UK)** - with enhanced privacy redaction
+### 🏦 Supported Providers
+- **American Express** - with enhanced privacy redaction
 - **Barclaycard** - with enhanced privacy redaction  
-- **Visa, Mastercard, Chase** - standard redaction
-- **Generic/Other** - fallback for unknown providers
 - **Auto-detection** - automatically identifies provider from PDF content
 
 ### 🔒 Enhanced Privacy Options
@@ -47,9 +45,9 @@ A Flask web application for redacting credit card statements from multiple provi
 
 ### Usage
 
-1. Upload your credit card statement PDF
+1. Upload your credit card statement PDF (AMEX or Barclaycard)
 2. Select provider (or leave as Auto-detect)
-3. Enable Enhanced Privacy if supported (Barclaycard/AMEX)
+3. Enable Enhanced Privacy for additional redaction
 4. Enter keywords to keep (comma-separated)
 5. Download your redacted statement
 
@@ -97,22 +95,13 @@ pdf-redact/
 - **Privacy Focused**: No data storage, all processing in-memory
 - **Usage Tracking**: Simple file-based counter with Google Analytics
 
-## Adding New Providers
+## Configuration
 
-1. **Add provider configuration** in `provider_config.py`:
-   ```python
-   'new_provider': ProviderConfig(
-       name='new_provider',
-       display_name='New Provider',
-       date_patterns=[r'\d{2}/\d{2}/\d{4}'],
-       currency_patterns=[r'£[\d,]+\.\d{2}'],
-       section_headers=['Transactions', 'Statement'],
-       transaction_structure='auto'
-   )
-   ```
+The application is configured to work specifically with:
+- **American Express UK statements** (MMM DD date format, £ currency)
+- **Barclaycard statements** (DD MMM date format, £ currency)
 
-2. **Add detection rules** in `detect_provider()` function
-3. **Test with sample PDFs** to ensure patterns work correctly
+Both providers support enhanced privacy redaction that removes personal and financial details while preserving transaction filtering functionality.
 
 ## License
 

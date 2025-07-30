@@ -66,7 +66,7 @@ HTML_TEMPLATE = '''
             <section class="bg-white p-8 rounded-lg shadow-md md:w-1/2">
                 <h2 class="text-2xl font-bold mb-4 text-gray-800">How It Works</h2>
                 <p class="text-gray-600 mb-4">
-                    This tool works with multiple credit card providers including AMEX, Barclaycard, Visa, Mastercard and more. It allows you to:
+                    This tool works with American Express and Barclaycard credit card statements. It allows you to:
                 </p>
                 <ul class="list-disc list-inside text-gray-600 mb-4">
                     <li>Upload your credit card statement PDF</li>
@@ -114,7 +114,7 @@ HTML_TEMPLATE = '''
                             <input type="checkbox" name="enhanced_privacy" id="enhanced_privacy" 
                                    class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
                             <label for="enhanced_privacy" class="ml-2 block text-sm text-gray-700">
-                                <strong>Enhanced Financial Privacy</strong> (Barclaycard & AMEX)
+                                <strong>Enhanced Financial Privacy</strong>
                             </label>
                         </div>
                         <p class="mt-1 text-xs text-gray-500">
@@ -126,20 +126,13 @@ HTML_TEMPLATE = '''
                         document.getElementById('provider').addEventListener('change', function() {
                             const privacyOption = document.getElementById('privacy-option');
                             const selectedProvider = this.value;
-                            if (selectedProvider === 'barclaycard' || selectedProvider === 'amex_uk' || selectedProvider === 'auto') {
-                                privacyOption.classList.remove('hidden');
-                            } else {
-                                privacyOption.classList.add('hidden');
-                                document.getElementById('enhanced_privacy').checked = false;
-                            }
+                            // Always show privacy option for AMEX and Barclaycard
+                            privacyOption.classList.remove('hidden');
                         });
                         
-                        // Show on page load if barclaycard is selected
+                        // Show on page load
                         document.addEventListener('DOMContentLoaded', function() {
-                            const provider = document.getElementById('provider').value;
-                            if (provider === 'barclaycard' || provider === 'amex_uk' || provider === 'auto') {
-                                document.getElementById('privacy-option').classList.remove('hidden');
-                            }
+                            document.getElementById('privacy-option').classList.remove('hidden');
                         });
                     </script>
                     <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
@@ -198,21 +191,18 @@ def index():
                 try:
                     output_filename = f"redacted_{file.filename}"
                     
-                    # Check if enhanced privacy is requested and provider supports it
+                    # Check if enhanced privacy is requested
                     if enhanced_privacy:
                         if provider == 'barclaycard' or (provider == 'auto' and 'barclaycard' in file.filename.lower()):
                             # Use enhanced financial privacy redaction for Barclaycard
                             redacted_file_path, total_remaining = redact_barclaycard_with_privacy(
                                 input_path, keywords, output_filename, redact_financial=True
                             )
-                        elif provider in ['amex_uk', 'amex'] or (provider == 'auto' and ('amex' in file.filename.lower() or 'express' in file.filename.lower())):
-                            # Use enhanced financial privacy redaction for AMEX
+                        else:
+                            # Use enhanced financial privacy redaction for AMEX (default)
                             redacted_file_path, total_remaining = redact_amex_with_privacy(
                                 input_path, keywords, output_filename, redact_financial=True
                             )
-                        else:
-                            # Use standard generic redaction if provider doesn't support enhanced privacy
-                            redacted_file_path, total_remaining = redact_pdf_generic(input_path, keywords, output_filename, provider)
                     else:
                         # Use standard generic redaction
                         redacted_file_path, total_remaining = redact_pdf_generic(input_path, keywords, output_filename, provider)
