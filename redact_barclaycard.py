@@ -27,12 +27,15 @@ import logging
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 
-# X-coordinate ranges for each column (with tolerance)
-DATE_X_MIN, DATE_X_MAX   = 48,  82   # "06 Feb"
-MERCH_X_MIN, MERCH_X_MAX = 80, 260   # merchant name (and wrapped lines)
-AMT_X_MIN,   AMT_X_MAX   = 255, 295  # "£7.99"
+# BarclayCard uses up to TWO columns when there are many transactions.
+# Left column:  date x≈52, merchant x≈84-250, amount x≈255-295
+# Right column: date x≈330, merchant x≈361-520, amount x≈520-565
+COLUMNS = [
+    {"date": (48, 82),   "merch": (80, 260),  "amt": (250, 300), "e": (235, 265)},
+    {"date": (325, 365), "merch": (355, 520),  "amt": (515, 570), "e": (515, 530)},
+]
 
-DATE_PATTERN = re.compile(r'^\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)$')
+DATE_PATTERN   = re.compile(r'^\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)$')
 AMOUNT_PATTERN = re.compile(r'^£\d{1,3}(,\d{3})*\.\d{2}$')
 
 # Section header that starts the transactions we care about
@@ -45,17 +48,23 @@ def is_in_x_range(bbox, x_min, x_max, tol=8):
     return (x_min - tol) <= bbox[0] <= (x_max + tol)
 
 
+def col_for_span(bbox):
+    """Return the column config that matches a span's x position, or None."""
+    for col in COLUMNS:
+        d = col["date"]
+        if (d[0] - 10) <= bbox[0] <= (d[1] + 200):  # wide check — any span in this col area
+            return col
+    return None
+
+
 def group_transactions(page):
     """
-    Parse page spans into a list of transaction dicts:
-      { 'date': str, 'merchant': str, 'amount': float,
-        'amount_bbox': Rect, 'merchant_bboxes': [Rect], 'date_bbox': Rect,
-        'e_bboxes': [Rect] }
+    Parse page spans into transaction dicts. Handles 1 or 2 columns.
     Returns (transactions, section_start_y, section_end_y).
     """
     blocks = page.get_text("dict")["blocks"]
 
-    # Collect all spans with position
+    # Collect all spans
     spans = []
     for block in blocks:
         if "lines" not in block:
@@ -64,108 +73,133 @@ def group_transactions(page):
             for span in line["spans"]:
                 spans.append({
                     "text": span["text"].strip(),
-                    "bbox": span["bbox"],   # (x0, y0, x1, y1)
+                    "bbox": span["bbox"],
                 })
 
-    # Sort top→bottom, left→right
-    spans.sort(key=lambda s: (round(s["bbox"][1] / 4), s["bbox"][0]))
-
-    # Find section boundaries
+    # Find section boundaries across ALL columns
+    # Section start = "How you've used your card" (any x)
+    # Section end   = "Promotional transactions" or "Interest and charges" (any x)
     section_start_y = None
-    section_end_y   = None
-    for s in spans:
-        if any(t in s["text"] for t in SECTION_START_TEXTS):
-            section_start_y = s["bbox"][3]   # bottom of header
+    section_end_y_by_col = {}  # col_index → end_y
+
+    for s in sorted(spans, key=lambda x: x["bbox"][1]):
+        text = s["text"]
+        if any(t in text for t in SECTION_START_TEXTS) and section_start_y is None:
+            section_start_y = s["bbox"][3]
             logger.info(f"Transaction section starts at y={section_start_y:.1f}")
-        if section_start_y and any(t in s["text"] for t in SECTION_END_TEXTS):
-            section_end_y = s["bbox"][1]      # top of end header
-            logger.info(f"Transaction section ends at y={section_end_y:.1f}")
-            break
 
     if section_start_y is None:
         logger.warning("Could not find transaction section start — no transactions found")
         return [], None, None
 
-    # Filter to only spans inside the transaction section
-    tx_spans = [s for s in spans
-                if s["bbox"][1] >= section_start_y
-                and (section_end_y is None or s["bbox"][1] < section_end_y)
-                and s["text"]]
+    # Find end markers per column (left vs right)
+    for s in spans:
+        if any(t in s["text"] for t in SECTION_END_TEXTS):
+            x0 = s["bbox"][0]
+            col_idx = 1 if x0 > 300 else 0
+            if col_idx not in section_end_y_by_col:
+                section_end_y_by_col[col_idx] = s["bbox"][1]
+                logger.info(f"Column {col_idx} section ends at y={s['bbox'][1]:.1f} ('{s['text'][:30]}')")
 
-    # Group into rows by y-coordinate (tolerance ±4 pts)
-    rows = {}
-    for s in tx_spans:
-        y_key = round(s["bbox"][1] / 4) * 4
-        rows.setdefault(y_key, []).append(s)
-
-    # Identify transaction rows: a row with a date span at x≈52-77
+    # Process each column separately
     transactions = []
-    sorted_y_keys = sorted(rows.keys())
 
-    i = 0
-    while i < len(sorted_y_keys):
-        y = sorted_y_keys[i]
-        row = rows[y]
+    for col_idx, col in enumerate(COLUMNS):
+        d_min, d_max   = col["date"]
+        m_min, m_max   = col["merch"]
+        a_min, a_max   = col["amt"]
+        e_min, e_max   = col["e"]
+        end_y = section_end_y_by_col.get(col_idx, None)
 
-        date_span = None
-        merch_spans = []
-        amount_span = None
-        e_spans = []
+        # Filter spans for this column.
+        # Right column (col_idx>0) restarts y from top of page, so we can't
+        # use section_start_y (which is the left-column header position).
+        # Instead just filter by x range and section end y.
+        col_spans = [
+            s for s in spans
+            if s["bbox"][0] >= (d_min - 10)
+            and s["bbox"][0] <= (a_max + 20)
+            and (end_y is None or s["bbox"][1] < end_y)
+            and s["text"]
+        ]
+        # For left column, still enforce section_start_y
+        if col_idx == 0:
+            col_spans = [s for s in col_spans if s["bbox"][1] >= section_start_y]
 
-        for s in row:
-            bbox = s["bbox"]
-            text = s["text"]
-            if DATE_PATTERN.match(text) and is_in_x_range(bbox, DATE_X_MIN, DATE_X_MAX):
-                date_span = s
-            elif AMOUNT_PATTERN.match(text) and is_in_x_range(bbox, AMT_X_MIN, AMT_X_MAX):
-                amount_span = s
-            elif text == 'e' and is_in_x_range(bbox, 240, 260):
-                e_spans.append(s)
-            elif is_in_x_range(bbox, MERCH_X_MIN, MERCH_X_MAX):
-                merch_spans.append(s)
+        if not col_spans:
+            continue
 
-        if date_span:
-            # Also collect 'e' markers from other blocks at roughly same y
-            # (they're sometimes in separate PDF line objects)
-            tx_y = date_span["bbox"][1]
-            for s in spans:
-                if (s["text"].strip() == "e"
-                        and is_in_x_range(s["bbox"], 235, 260)
-                        and abs(s["bbox"][1] - tx_y) < 12
-                        and s["bbox"] not in [x["bbox"] for x in e_spans]):
+        # Group into rows by y
+        rows = {}
+        for s in col_spans:
+            y_key = round(s["bbox"][1] / 4) * 4
+            rows.setdefault(y_key, []).append(s)
+
+        sorted_y_keys = sorted(rows.keys())
+        i = 0
+        while i < len(sorted_y_keys):
+            y = sorted_y_keys[i]
+            row = rows[y]
+
+            date_span  = None
+            merch_spans = []
+            amount_span = None
+            e_spans    = []
+
+            for s in row:
+                bbox = s["bbox"]
+                text = s["text"]
+                if DATE_PATTERN.match(text) and is_in_x_range(bbox, d_min, d_max):
+                    date_span = s
+                elif AMOUNT_PATTERN.match(text) and is_in_x_range(bbox, a_min, a_max):
+                    amount_span = s
+                elif text == 'e' and is_in_x_range(bbox, e_min, e_max):
                     e_spans.append(s)
+                elif is_in_x_range(bbox, m_min, m_max):
+                    merch_spans.append(s)
 
-            # Check next row(s) for wrapped merchant name (no date, merchant x, no amount)
-            j = i + 1
-            while j < len(sorted_y_keys):
-                next_y = sorted_y_keys[j]
-                next_row = rows[next_y]
-                has_date   = any(DATE_PATTERN.match(s["text"]) and is_in_x_range(s["bbox"], DATE_X_MIN, DATE_X_MAX) for s in next_row)
-                has_amount = any(AMOUNT_PATTERN.match(s["text"]) and is_in_x_range(s["bbox"], AMT_X_MIN, AMT_X_MAX) for s in next_row)
-                wrap_spans = [s for s in next_row if is_in_x_range(s["bbox"], MERCH_X_MIN, MERCH_X_MAX)]
-                if not has_date and not has_amount and wrap_spans:
-                    merch_spans.extend(wrap_spans)
-                    j += 1
-                else:
-                    break
+            if date_span:
+                # Collect 'e' markers from other blocks at same y
+                tx_y = date_span["bbox"][1]
+                for s in col_spans:
+                    if (s["text"].strip() == "e"
+                            and is_in_x_range(s["bbox"], e_min, e_max)
+                            and abs(s["bbox"][1] - tx_y) < 12
+                            and s["bbox"] not in [x["bbox"] for x in e_spans]):
+                        e_spans.append(s)
 
-            merchant_text = " ".join(s["text"] for s in merch_spans).strip()
-            amount_val    = float(amount_span["text"].replace("£","").replace(",","")) if amount_span else None
+                # Check for wrapped merchant lines
+                j = i + 1
+                while j < len(sorted_y_keys):
+                    next_row = rows[sorted_y_keys[j]]
+                    has_date   = any(DATE_PATTERN.match(s["text"]) and is_in_x_range(s["bbox"], d_min, d_max) for s in next_row)
+                    has_amount = any(AMOUNT_PATTERN.match(s["text"]) and is_in_x_range(s["bbox"], a_min, a_max) for s in next_row)
+                    wrap_spans = [s for s in next_row if is_in_x_range(s["bbox"], m_min, m_max)]
+                    if not has_date and not has_amount and wrap_spans:
+                        merch_spans.extend(wrap_spans)
+                        j += 1
+                    else:
+                        break
 
-            transactions.append({
-                "date":           date_span["text"],
-                "merchant":       merchant_text,
-                "amount":         amount_val,
-                "date_bbox":      fitz.Rect(date_span["bbox"]),
-                "merchant_bboxes":[fitz.Rect(s["bbox"]) for s in merch_spans],
-                "amount_bbox":    fitz.Rect(amount_span["bbox"]) if amount_span else None,
-                "e_bboxes":       [fitz.Rect(s["bbox"]) for s in e_spans],
-            })
-            i = j
-        else:
-            i += 1
+                merchant_text = " ".join(s["text"] for s in merch_spans).strip()
+                amount_val    = float(amount_span["text"].replace("£","").replace(",","")) if amount_span else None
 
-    return transactions, section_start_y, section_end_y
+                transactions.append({
+                    "date":            date_span["text"],
+                    "merchant":        merchant_text,
+                    "amount":          amount_val,
+                    "date_bbox":       fitz.Rect(date_span["bbox"]),
+                    "merchant_bboxes": [fitz.Rect(s["bbox"]) for s in merch_spans],
+                    "amount_bbox":     fitz.Rect(amount_span["bbox"]) if amount_span else None,
+                    "e_bboxes":        [fitz.Rect(s["bbox"]) for s in e_spans],
+                    "col":             col_idx,
+                    "full_row_x":      (d_min - 4, a_max + 4),  # full redaction width
+                })
+                i = j
+            else:
+                i += 1
+
+    return transactions, section_start_y, section_end_y_by_col.get(0)
 
 
 def redact_barclaycard(input_path, output_path, keep_keywords):
@@ -196,7 +230,6 @@ def redact_barclaycard(input_path, output_path, keep_keywords):
             else:
                 logger.info(f"  REDACT {tx['date']} | {merchant} | £{tx['amount']:.2f}")
                 # Redact the entire row as one full-width black bar
-                # Collect all bboxes for this transaction to compute the full row extent
                 all_bboxes = ([tx["date_bbox"]] +
                               tx["merchant_bboxes"] +
                               ([tx["amount_bbox"]] if tx["amount_bbox"] else []) +
@@ -204,8 +237,8 @@ def redact_barclaycard(input_path, output_path, keep_keywords):
                 if all_bboxes:
                     y0 = min(r.y0 for r in all_bboxes) - 2
                     y1 = max(r.y1 for r in all_bboxes) + 2
-                    # Full width from left margin to right margin of amount column
-                    full_row = fitz.Rect(48, y0, 290, y1)
+                    x0, x1 = tx.get("full_row_x", (48, 290))
+                    full_row = fitz.Rect(x0, y0, x1, y1)
                     page.add_redact_annot(full_row, fill=(0, 0, 0))
 
         page.apply_redactions()
