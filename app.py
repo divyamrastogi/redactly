@@ -4,6 +4,7 @@ import logging
 from redact_transactions import redact_transactions
 from redact_generic import redact_pdf_generic
 from redact_financial_details import redact_barclaycard_with_privacy, redact_amex_with_privacy
+from redact_barclaycard import redact_barclaycard
 from provider_config import get_all_providers
 
 app = Flask(__name__)
@@ -99,6 +100,13 @@ HTML_TEMPLATE = '''
                         </select>
                         <p class="mt-1 text-xs text-gray-500">Leave as Auto-detect for automatic provider detection</p>
                     </div>
+
+                    <!-- Barclaycard tip — shown when barclaycard is selected -->
+                    <div id="barclaycard-tip" class="hidden bg-blue-50 border border-blue-200 rounded-md p-3 text-sm text-blue-700">
+                        <strong>🏦 Barclaycard detected</strong> — uses precise row-by-row redaction.
+                        Enter merchant name keywords (e.g. <em>Hyperoptic, Tfl Travel, Your-Saving</em>).
+                    </div>
+
                     <div>
                         <label for="pdf" class="block text-sm font-medium text-gray-700">Select Credit Card Statement PDF</label>
                         <input type="file" name="pdf" id="pdf" accept=".pdf" required
@@ -106,10 +114,10 @@ HTML_TEMPLATE = '''
                     </div>
                     <div>
                         <label for="keywords" class="block text-sm font-medium text-gray-700">Keywords to Keep (comma-separated)</label>
-                        <input type="text" name="keywords" id="keywords" placeholder="e.g. Office Supplies, Travel, Client Dinner" required
+                        <input type="text" name="keywords" id="keywords" placeholder="e.g. Hyperoptic, Tfl Travel, Your-Saving" required
                                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
                     </div>
-                    <div id="privacy-option" class="hidden">
+                    <div id="privacy-option">
                         <div class="flex items-center">
                             <input type="checkbox" name="enhanced_privacy" id="enhanced_privacy" 
                                    class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
@@ -118,21 +126,32 @@ HTML_TEMPLATE = '''
                             </label>
                         </div>
                         <p class="mt-1 text-xs text-gray-500">
-                            Also redact personal details, account numbers, balances, and financial information while preserving statement structure
+                            Also redact personal details, account numbers, and balances (AMEX only — Barclaycard uses precise redaction regardless)
                         </p>
                     </div>
                     <script>
-                        // Show/hide privacy option based on provider selection
-                        document.getElementById('provider').addEventListener('change', function() {
-                            const privacyOption = document.getElementById('privacy-option');
-                            const selectedProvider = this.value;
-                            // Always show privacy option for AMEX and Barclaycard
-                            privacyOption.classList.remove('hidden');
-                        });
-                        
-                        // Show on page load
-                        document.addEventListener('DOMContentLoaded', function() {
-                            document.getElementById('privacy-option').classList.remove('hidden');
+                        function updateProviderUI() {
+                            const provider = document.getElementById('provider').value;
+                            const tip = document.getElementById('barclaycard-tip');
+                            const keywords = document.getElementById('keywords');
+                            if (provider === 'barclaycard') {
+                                tip.classList.remove('hidden');
+                                keywords.placeholder = 'e.g. Hyperoptic, Tfl Travel, Your-Saving';
+                            } else {
+                                tip.classList.add('hidden');
+                                keywords.placeholder = 'e.g. Office Supplies, Travel, Client Dinner';
+                            }
+                        }
+                        document.getElementById('provider').addEventListener('change', updateProviderUI);
+                        document.addEventListener('DOMContentLoaded', updateProviderUI);
+
+                        // Auto-detect Barclaycard from filename
+                        document.getElementById('pdf').addEventListener('change', function() {
+                            const filename = this.files[0]?.name?.toLowerCase() || '';
+                            if (filename.includes('barclay')) {
+                                document.getElementById('provider').value = 'barclaycard';
+                                updateProviderUI();
+                            }
                         });
                     </script>
                     <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
@@ -190,35 +209,50 @@ def index():
                 
                 try:
                     output_filename = f"redacted_{file.filename}"
-                    
-                    # Check if enhanced privacy is requested
-                    if enhanced_privacy:
-                        if provider == 'barclaycard' or (provider == 'auto' and 'barclaycard' in file.filename.lower()):
-                            # Use enhanced financial privacy redaction for Barclaycard
-                            redacted_file_path, total_remaining = redact_barclaycard_with_privacy(
-                                input_path, keywords, output_filename, redact_financial=True
-                            )
-                        else:
-                            # Use enhanced financial privacy redaction for AMEX (default)
+
+                    # Auto-detect Barclaycard from filename or explicit selection
+                    is_barclaycard = (
+                        provider == 'barclaycard' or
+                        (provider == 'auto' and (
+                            'barclaycard' in file.filename.lower() or
+                            'barclay' in file.filename.lower()
+                        ))
+                    )
+
+                    if is_barclaycard:
+                        # Use the new precise Barclaycard redaction script
+                        redacted_file_path, total_remaining, kept = redact_barclaycard(
+                            input_path, output_filename, keywords
+                        )
+                        kept_count = len(kept)
+                        message = f'''
+                        <strong>✅ Barclaycard statement redacted</strong><br>
+                        Kept {kept_count} transaction{"s" if kept_count != 1 else ""} totalling
+                        <strong>£{total_remaining:.2f}</strong><br>
+                        <a href="/download/{redacted_file_path}" class="text-indigo-600 hover:text-indigo-800 font-medium">
+                            ⬇ Download Redacted PDF
+                        </a>
+                        '''
+                    elif enhanced_privacy:
+                        if provider == 'auto':
                             redacted_file_path, total_remaining = redact_amex_with_privacy(
                                 input_path, keywords, output_filename, redact_financial=True
                             )
+                        else:
+                            redacted_file_path, total_remaining = redact_amex_with_privacy(
+                                input_path, keywords, output_filename, redact_financial=True
+                            )
+                        message = f'''
+                        Total of remaining transactions: £{total_remaining:.2f}
+                        <br><span class='text-sm text-green-600'>✓ Enhanced Financial Privacy applied</span><br>
+                        <a href="/download/{redacted_file_path}" class="text-indigo-600 hover:text-indigo-800">Download Redacted PDF</a>
+                        '''
                     else:
-                        # Use standard generic redaction
                         redacted_file_path, total_remaining = redact_pdf_generic(input_path, keywords, output_filename, provider)
-                    
-                    # Determine currency symbol based on provider/amount
-                    currency_symbol = '£'  # Default to GBP for now
-                    
-                    # Build success message
-                    privacy_note = ""
-                    if enhanced_privacy and (provider == 'barclaycard' or provider == 'auto'):
-                        privacy_note = "<br><span class='text-sm text-green-600'>✓ Enhanced Financial Privacy applied - credit limits, balances, and payment amounts redacted</span>"
-                    
-                    message = f'''
-                    Total of remaining transactions: {currency_symbol}{total_remaining:.2f}{privacy_note}<br>
-                    <a href="/download/{redacted_file_path}" class="text-indigo-600 hover:text-indigo-800">Download Redacted PDF</a>
-                    '''
+                        message = f'''
+                        Total of remaining transactions: £{total_remaining:.2f}<br>
+                        <a href="/download/{redacted_file_path}" class="text-indigo-600 hover:text-indigo-800">Download Redacted PDF</a>
+                        '''
                 except Exception as e:
                     logger.error(f"An error occurred: {str(e)}", exc_info=True)
                     message = f"An error occurred: {str(e)}"
