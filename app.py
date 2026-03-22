@@ -210,13 +210,24 @@ def index():
                 try:
                     output_filename = f"redacted_{file.filename}"
 
-                    # Auto-detect Barclaycard from filename or explicit selection
+                    # Auto-detect Barclaycard from filename, explicit selection, or PDF content
+                    filename_lower = file.filename.lower()
+                    if provider == 'auto':
+                        # Peek at PDF text to detect provider reliably
+                        try:
+                            import fitz as _fitz
+                            _doc = _fitz.open(input_path)
+                            _text = _doc[0].get_text().lower() if len(_doc) > 0 else ''
+                            _doc.close()
+                            if 'barclaycard' in _text or 'barclays' in _text or 'mastercard avios' in _text:
+                                provider = 'barclaycard'
+                        except Exception:
+                            pass
+
                     is_barclaycard = (
                         provider == 'barclaycard' or
-                        (provider == 'auto' and (
-                            'barclaycard' in file.filename.lower() or
-                            'barclay' in file.filename.lower()
-                        ))
+                        'barclaycard' in filename_lower or
+                        'barclay' in filename_lower
                     )
 
                     if is_barclaycard:
