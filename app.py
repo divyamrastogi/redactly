@@ -451,3 +451,30 @@ def debug_redact():
     finally:
         if os.path.exists(tmp):
             os.remove(tmp)
+
+
+@app.route('/debug-spans', methods=['POST'])
+def debug_spans():
+    """Return raw span x/y data for first 20 transaction-area spans."""
+    import uuid, fitz as _fitz
+    file = request.files.get('pdf')
+    if not file: return jsonify({'error': 'no file'}), 400
+    tmp = f"tmp_sp_{uuid.uuid4().hex}.pdf"
+    file.save(tmp)
+    try:
+        doc = _fitz.open(tmp)
+        page = doc[1]
+        spans = []
+        for block in page.get_text("dict")["blocks"]:
+            if "lines" not in block: continue
+            for line in block["lines"]:
+                for span in line["spans"]:
+                    t = span["text"].strip()
+                    if t:
+                        spans.append({"x": round(span["bbox"][0],1), "y": round(span["bbox"][1],1), "t": t[:40]})
+        doc.close()
+        # Return spans sorted by y, x — just the transaction area
+        spans.sort(key=lambda s: (s["y"], s["x"]))
+        return jsonify({"total_spans": len(spans), "spans": spans[:80]})
+    finally:
+        if os.path.exists(tmp): os.remove(tmp)
