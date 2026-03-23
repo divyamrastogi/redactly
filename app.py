@@ -38,9 +38,11 @@ HTML_TEMPLATE = '''
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Credit Card Statement Redaction Tool | Whitelist Transactions</title>
-    <meta name="description" content="Redact your credit card statements easily. Supports AMEX, Barclaycard, Visa, Mastercard and more.">
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>Redact — Credit Card Statement Privacy Tool</title>
+    <meta name="description" content="Redact your credit card statements privately. Supports AMEX, Barclaycard, Visa, Mastercard and more.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;550;600;700&display=swap" rel="stylesheet">
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-SY9PXXMVD8"></script>
     <script>
     window.dataLayer = window.dataLayer || [];
@@ -48,125 +50,1000 @@ HTML_TEMPLATE = '''
     gtag('js', new Date());
     gtag('config', 'G-SY9PXXMVD8');
     </script>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        /* ── Dark theme (default) ── */
+        :root {
+            --bg:             #0a0a0b;
+            --bg-card:        #111113;
+            --bg-elevated:    #18181b;
+            --border:         rgba(255,255,255,0.07);
+            --border-focus:   rgba(139,92,246,0.6);
+            --text:           #f4f4f5;
+            --text-muted:     #71717a;
+            --text-faint:     #3f3f46;
+            --accent:         #8b5cf6;
+            --accent-glow:    rgba(139,92,246,0.15);
+            --accent-hover:   #7c3aed;
+            --success:        #10b981;
+            --success-bg:     rgba(16,185,129,0.08);
+            --success-border: rgba(16,185,129,0.2);
+            --error:          #f87171;
+            --error-bg:       rgba(248,113,113,0.08);
+            --error-border:   rgba(248,113,113,0.2);
+            --radius:         10px;
+            --radius-lg:      14px;
+            --shadow:         0 1px 3px rgba(0,0,0,0.4), 0 4px 16px rgba(0,0,0,0.3);
+        }
+
+        /* ── Light theme ── */
+        .light {
+            --bg:             #fafafa;
+            --bg-card:        #ffffff;
+            --bg-elevated:    #f4f4f5;
+            --border:         rgba(0,0,0,0.08);
+            --border-focus:   rgba(109,40,217,0.5);
+            --text:           #18181b;
+            --text-muted:     #52525b;
+            --text-faint:     #a1a1aa;
+            --accent:         #7c3aed;
+            --accent-glow:    rgba(124,58,237,0.10);
+            --accent-hover:   #6d28d9;
+            --success:        #059669;
+            --success-bg:     rgba(5,150,105,0.06);
+            --success-border: rgba(5,150,105,0.2);
+            --error:          #dc2626;
+            --error-bg:       rgba(220,38,38,0.06);
+            --error-border:   rgba(220,38,38,0.2);
+            --shadow:         0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.05);
+        }
+
+        /* ── System default (prefers dark → dark vars already on :root) ── */
+        @media (prefers-color-scheme: light) {
+            :root:not(.dark) {
+                --bg:             #fafafa;
+                --bg-card:        #ffffff;
+                --bg-elevated:    #f4f4f5;
+                --border:         rgba(0,0,0,0.08);
+                --border-focus:   rgba(109,40,217,0.5);
+                --text:           #18181b;
+                --text-muted:     #52525b;
+                --text-faint:     #a1a1aa;
+                --accent:         #7c3aed;
+                --accent-glow:    rgba(124,58,237,0.10);
+                --accent-hover:   #6d28d9;
+                --success:        #059669;
+                --success-bg:     rgba(5,150,105,0.06);
+                --success-border: rgba(5,150,105,0.2);
+                --error:          #dc2626;
+                --error-bg:       rgba(220,38,38,0.06);
+                --error-border:   rgba(220,38,38,0.2);
+                --shadow:         0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.05);
+            }
+        }
+
+        html, body {
+            min-height: 100vh;
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            font-size: 14px;
+            line-height: 1.6;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ── Layout ── */
+        .page-wrap {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 880px;
+            margin: 0 auto;
+            padding: 0 24px;
+        }
+
+        /* ── Header ── */
+        .site-header {
+            border-bottom: 1px solid var(--border);
+            padding: 20px 0;
+        }
+
+        .header-inner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            text-decoration: none;
+        }
+
+        .logo-icon {
+            width: 32px;
+            height: 32px;
+            background: var(--accent);
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+
+        .logo-icon svg {
+            width: 18px;
+            height: 18px;
+            color: white;
+        }
+
+        .logo-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text);
+            letter-spacing: -0.02em;
+        }
+
+        .usage-badge {
+            font-size: 12px;
+            color: var(--text-muted);
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            padding: 4px 10px;
+            border-radius: 20px;
+        }
+
+        .header-right {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        /* ── Theme toggle button ── */
+        .theme-toggle {
+            width: 34px;
+            height: 34px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            cursor: pointer;
+            color: var(--text-muted);
+            transition: color 0.15s, background 0.15s, border-color 0.15s;
+            flex-shrink: 0;
+        }
+
+        .theme-toggle:hover {
+            color: var(--text);
+            border-color: var(--accent);
+        }
+
+        .theme-toggle svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        /* show/hide sun vs moon */
+        .icon-sun  { display: none; }
+        .icon-moon { display: block; }
+        .light .icon-sun  { display: block; }
+        .light .icon-moon { display: none; }
+        @media (prefers-color-scheme: light) {
+            :root:not(.dark) .icon-sun  { display: block; }
+            :root:not(.dark) .icon-moon { display: none; }
+        }
+
+        /* ── Hero ── */
+        .hero {
+            padding: 56px 0 40px;
+            text-align: center;
+        }
+
+        .hero-eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 11px;
+            font-weight: 500;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--accent);
+            background: var(--accent-glow);
+            border: 1px solid rgba(139,92,246,0.25);
+            padding: 4px 12px;
+            border-radius: 20px;
+            margin-bottom: 20px;
+        }
+
+        .hero h1 {
+            font-size: clamp(28px, 5vw, 42px);
+            font-weight: 700;
+            letter-spacing: -0.03em;
+            line-height: 1.15;
+            color: var(--text);
+            margin-bottom: 14px;
+        }
+
+        .hero p {
+            font-size: 16px;
+            color: var(--text-muted);
+            max-width: 480px;
+            margin: 0 auto;
+            line-height: 1.65;
+        }
+
+        /* ── Cards ── */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow);
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 24px;
+        }
+
+        @media (max-width: 680px) {
+            .main-grid { grid-template-columns: 1fr; }
+        }
+
+        /* ── How it works card ── */
+        .how-card {
+            padding: 28px;
+        }
+
+        .how-card h2 {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 12px;
+            letter-spacing: -0.01em;
+        }
+
+        .how-card p {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 16px;
+            line-height: 1.65;
+        }
+
+        .how-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-bottom: 20px;
+        }
+
+        .how-list li {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .how-list li::before {
+            content: '';
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: var(--accent);
+            margin-top: 7px;
+            flex-shrink: 0;
+        }
+
+        .example-keywords {
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 12px 16px;
+        }
+
+        .example-keywords p {
+            font-size: 12px;
+            color: var(--text-faint);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.06em;
+            font-weight: 500;
+        }
+
+        .example-keywords code {
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+            font-size: 12px;
+            color: var(--accent);
+        }
+
+        /* ── Form card ── */
+        .form-card {
+            padding: 28px;
+        }
+
+        .form-card h2 {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 22px;
+            letter-spacing: -0.01em;
+        }
+
+        .form-stack {
+            display: flex;
+            flex-direction: column;
+            gap: 18px;
+        }
+
+        .field label {
+            display: block;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-muted);
+            margin-bottom: 7px;
+            letter-spacing: 0.01em;
+        }
+
+        .field label span {
+            color: var(--text-faint);
+            font-weight: 400;
+        }
+
+        .field select,
+        .field input[type="text"] {
+            width: 100%;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text);
+            font-family: inherit;
+            font-size: 13.5px;
+            padding: 9px 13px;
+            outline: none;
+            transition: border-color 0.15s, box-shadow 0.15s;
+            appearance: none;
+            -webkit-appearance: none;
+        }
+
+        .field select {
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+            background-repeat: no-repeat;
+            background-position: right 12px center;
+            padding-right: 36px;
+            cursor: pointer;
+        }
+
+        .field select:focus,
+        .field input[type="text"]:focus {
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        .field input::placeholder {
+            color: var(--text-faint);
+        }
+
+        .hint {
+            display: block;
+            font-size: 11.5px;
+            color: var(--text-faint);
+            margin-top: 5px;
+        }
+
+        /* ── Barclaycard tip ── */
+        .provider-tip {
+            display: none;
+            align-items: flex-start;
+            gap: 10px;
+            background: rgba(139,92,246,0.06);
+            border: 1px solid rgba(139,92,246,0.2);
+            border-radius: var(--radius);
+            padding: 11px 14px;
+            font-size: 12.5px;
+            color: #c4b5fd;
+        }
+
+        .provider-tip.visible { display: flex; }
+
+        .provider-tip svg {
+            width: 15px;
+            height: 15px;
+            flex-shrink: 0;
+            margin-top: 1px;
+            color: var(--accent);
+        }
+
+        /* ── Drop zone ── */
+        .drop-zone {
+            position: relative;
+            border: 1.5px dashed var(--border);
+            border-radius: var(--radius);
+            padding: 28px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: border-color 0.2s, background 0.2s;
+            background: transparent;
+        }
+
+        .drop-zone:hover,
+        .drop-zone.drag-over {
+            border-color: var(--accent);
+            background: var(--accent-glow);
+        }
+
+        .drop-zone svg {
+            width: 28px;
+            height: 28px;
+            color: var(--text-faint);
+            transition: color 0.2s;
+        }
+
+        .drop-zone:hover svg,
+        .drop-zone.drag-over svg {
+            color: var(--accent);
+        }
+
+        .drop-label {
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+
+        .drop-label strong {
+            color: var(--accent);
+            font-weight: 500;
+        }
+
+        .drop-sub {
+            font-size: 11.5px;
+            color: var(--text-faint);
+        }
+
+        /* ── File list ── */
+        .file-list {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin-top: 8px;
+        }
+
+        .file-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 7px;
+            padding: 7px 11px;
+            font-size: 12.5px;
+            color: var(--text-muted);
+            animation: slide-in 0.18s ease-out;
+        }
+
+        .file-item span {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            min-width: 0;
+        }
+
+        .file-item .file-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .remove-btn {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: var(--text-faint);
+            font-size: 14px;
+            line-height: 1;
+            padding: 2px 5px;
+            border-radius: 4px;
+            transition: color 0.15s, background 0.15s;
+            flex-shrink: 0;
+        }
+
+        .remove-btn:hover {
+            color: var(--error);
+            background: var(--error-bg);
+        }
+
+        /* ── Toggle / Checkbox ── */
+        .toggle-row {
+            display: flex;
+            align-items: flex-start;
+            gap: 12px;
+        }
+
+        .toggle-wrap {
+            position: relative;
+            flex-shrink: 0;
+            margin-top: 1px;
+        }
+
+        .toggle-wrap input[type="checkbox"] {
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle-track {
+            display: flex;
+            align-items: center;
+            width: 36px;
+            height: 20px;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            cursor: pointer;
+            transition: background 0.2s, border-color 0.2s;
+        }
+
+        .toggle-wrap input:checked ~ .toggle-track {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+
+        .toggle-thumb {
+            width: 14px;
+            height: 14px;
+            background: white;
+            border-radius: 50%;
+            margin-left: 2px;
+            transition: transform 0.2s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        }
+
+        .toggle-wrap input:checked ~ .toggle-track .toggle-thumb {
+            transform: translateX(16px);
+        }
+
+        .toggle-label-text {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text);
+        }
+
+        .toggle-label-text small {
+            display: block;
+            font-size: 11.5px;
+            font-weight: 400;
+            color: var(--text-faint);
+            margin-top: 2px;
+        }
+
+        /* ── Submit button ── */
+        .btn-primary {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: var(--accent);
+            color: white;
+            font-family: inherit;
+            font-size: 13.5px;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+            border: none;
+            border-radius: var(--radius);
+            cursor: pointer;
+            transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.3), 0 0 0 0 var(--accent-glow);
+        }
+
+        .btn-primary:hover {
+            background: var(--accent-hover);
+            box-shadow: 0 2px 8px rgba(139,92,246,0.4);
+        }
+
+        .btn-primary:active {
+            transform: scale(0.985);
+        }
+
+        .btn-primary:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .spinner {
+            display: none;
+            width: 15px;
+            height: 15px;
+            border: 2px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+        }
+
+        .spinner.visible { display: block; }
+
+        /* ── Results ── */
+        .results-section {
+            margin-bottom: 24px;
+        }
+
+        .results-heading {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-muted);
+            margin-bottom: 10px;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+        }
+
+        .results-list {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .result-card {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 13px 16px;
+            animation: slide-in 0.2s ease-out;
+        }
+
+        .result-card.success {
+            border-color: var(--success-border);
+            background: var(--success-bg);
+        }
+
+        .result-card.error {
+            border-color: var(--error-border);
+            background: var(--error-bg);
+        }
+
+        .result-icon {
+            flex-shrink: 0;
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .result-icon svg {
+            width: 16px;
+            height: 16px;
+        }
+
+        .result-card .pending .result-icon {
+            background: var(--bg-elevated);
+        }
+
+        .result-info {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .result-name {
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .result-detail {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: 2px;
+        }
+
+        .result-card.error .result-detail {
+            color: var(--error);
+        }
+
+        .btn-download {
+            flex-shrink: 0;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: rgba(16,185,129,0.12);
+            border: 1px solid rgba(16,185,129,0.3);
+            color: var(--success);
+            font-family: inherit;
+            font-size: 12px;
+            font-weight: 500;
+            padding: 6px 12px;
+            border-radius: 7px;
+            text-decoration: none;
+            transition: background 0.15s;
+        }
+
+        .btn-download:hover {
+            background: rgba(16,185,129,0.2);
+        }
+
+        .btn-download svg {
+            width: 13px;
+            height: 13px;
+        }
+
+        /* ── Custom request ── */
+        .custom-section {
+            margin-bottom: 48px;
+        }
+
+        .custom-section h2 {
+            font-size: 15px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 6px;
+            letter-spacing: -0.01em;
+        }
+
+        .custom-section p {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 20px;
+        }
+
+        .iframe-wrap {
+            border-radius: var(--radius-lg);
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+
+        .iframe-wrap iframe {
+            width: 100%;
+            height: 560px;
+            display: block;
+            border: none;
+        }
+
+        /* ── Footer ── */
+        .site-footer {
+            margin-top: auto;
+            border-top: 1px solid var(--border);
+            padding: 20px 0;
+            text-align: center;
+            font-size: 12px;
+            color: var(--text-faint);
+        }
+
+        /* ── Animations ── */
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        @keyframes slide-in {
+            from { opacity: 0; transform: translateY(6px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+    </style>
 </head>
-<body class="bg-gray-100 min-h-screen flex flex-col">
-    <header class="w-full bg-indigo-600 text-white text-center py-8">
-        <h1 class="text-4xl font-bold">Credit Card Statement Redaction Tool</h1>
-        <p class="mt-2 text-xl">Whitelist Your Important Transactions</p>
-        <p class="mt-1 text-sm text-gray-300">Supports AMEX, Barclaycard, Visa, Mastercard and more</p>
-        {% if usage_count %}<p class="mt-2 text-sm">Used {{ usage_count }} times</p>{% endif %}
-    </header>
+<body>
+<div class="page-wrap">
 
-    <main class="flex-grow container mx-auto px-4 py-8 max-w-5xl">
-        <div class="flex flex-col md:flex-row gap-8 mb-8">
-
-            <!-- How it works -->
-            <section class="bg-white p-8 rounded-lg shadow-md md:w-1/2">
-                <h2 class="text-2xl font-bold mb-4 text-gray-800">How It Works</h2>
-                <p class="text-gray-600 mb-4">Upload one or more credit card statement PDFs, enter keywords for the transactions you want to keep, and download the redacted files as they finish.</p>
-                <ul class="list-disc list-inside text-gray-600 mb-4 space-y-1">
-                    <li>Multi-file upload — process several months at once</li>
-                    <li>Auto-detects AMEX and Barclaycard</li>
-                    <li>Each file appears as soon as it's ready</li>
-                    <li>Filename includes the whitelisted total</li>
-                </ul>
-                <p class="text-gray-600"><strong>Example keywords:</strong> <em>Tfl Travel, Hyperoptic, Your-Saving</em></p>
-            </section>
-
-            <!-- Form -->
-            <div class="bg-white p-8 rounded-lg shadow-md md:w-1/2">
-                <h2 class="text-2xl font-bold mb-6 text-center text-gray-800">Redact Statements</h2>
-
-                <div class="space-y-4">
-                    <!-- Provider -->
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Credit Card Provider</label>
-                        <select id="provider" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
-                            {% for value, display in providers %}
-                            <option value="{{ value }}" {% if value == 'auto' %}selected{% endif %}>{{ display }}</option>
-                            {% endfor %}
-                        </select>
-                        <p class="mt-1 text-xs text-gray-500">Auto-detect works for most statements</p>
+    <!-- Header -->
+    <header class="site-header">
+        <div class="container">
+            <div class="header-inner">
+                <a class="logo" href="/">
+                    <div class="logo-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="3" width="18" height="18" rx="3"/>
+                            <line x1="9" y1="9" x2="15" y2="9"/>
+                            <line x1="9" y1="13" x2="12" y2="13"/>
+                        </svg>
                     </div>
-
-                    <!-- Barclaycard tip -->
-                    <div id="barclaycard-tip" class="hidden bg-blue-50 border border-blue-200 rounded-md p-3 text-sm text-blue-700">
-                        <strong>🏦 Barclaycard</strong> — precise row-by-row redaction + financial privacy. Enter merchant keywords.
-                    </div>
-
-                    <!-- File picker -->
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">PDF Statements <span class="text-gray-400">(one or more)</span></label>
-                        <div id="drop-zone"
-                             class="mt-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-md px-6 py-8 cursor-pointer hover:border-indigo-400 transition-colors"
-                             onclick="document.getElementById('pdf-input').click()">
-                            <svg class="w-10 h-10 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
-                                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
-                            </svg>
-                            <p class="text-sm text-gray-500">Drop PDFs here or <span class="text-indigo-600 font-medium">browse</span></p>
-                            <input id="pdf-input" type="file" accept=".pdf" multiple class="hidden">
-                        </div>
-                        <!-- Selected files list -->
-                        <ul id="file-list" class="mt-2 space-y-1 text-sm text-gray-600"></ul>
-                    </div>
-
-                    <!-- Keywords -->
-                    <div>
-                        <label class="block text-sm font-medium text-gray-700">Keywords to Keep <span class="text-gray-400">(comma-separated)</span></label>
-                        <input id="keywords" type="text" placeholder="e.g. Tfl Travel, Hyperoptic, Your-Saving"
-                               class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
-                    </div>
-
-                    <!-- Enhanced privacy -->
-                    <div class="flex items-start gap-2">
-                        <input id="enhanced_privacy" type="checkbox"
-                               class="mt-1 h-4 w-4 text-indigo-600 border-gray-300 rounded">
-                        <div>
-                            <label for="enhanced_privacy" class="text-sm font-medium text-gray-700">Enhanced Financial Privacy</label>
-                            <p class="text-xs text-gray-500">Also redact balances, credit limit, rates (Barclaycard always applies this)</p>
-                        </div>
-                    </div>
-
-                    <!-- Submit -->
-                    <button id="submit-btn" onclick="processFiles()"
-                            class="w-full flex justify-center items-center gap-2 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed">
-                        <span id="btn-text">Redact PDFs</span>
-                        <svg id="btn-spinner" class="hidden animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                    <span class="logo-name">Redact</span>
+                </a>
+                <div class="header-right">
+                    {% if usage_count %}
+                    <span class="usage-badge">{{ usage_count }} statements processed</span>
+                    {% endif %}
+                    <button class="theme-toggle" id="theme-toggle" title="Toggle theme" onclick="toggleTheme()">
+                        <!-- Moon (shown in dark mode) -->
+                        <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+                        </svg>
+                        <!-- Sun (shown in light mode) -->
+                        <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="5"/>
+                            <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
+                            <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
+                            <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
+                            <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
                         </svg>
                     </button>
                 </div>
             </div>
         </div>
+    </header>
 
-        <!-- Results area — files appear here as they finish -->
-        <div id="results" class="space-y-3"></div>
+    <main style="flex:1;">
+        <div class="container">
 
-        <!-- Google Form -->
-        <section class="bg-white p-8 rounded-lg shadow-md mt-8">
-            <h2 class="text-2xl font-bold mb-6 text-center text-gray-800">Need a Custom Solution?</h2>
-            <iframe src="https://docs.google.com/forms/d/e/1FAIpQLSd2PkHw7ATLfQYwL0CwdkKOnLynPU6mRweu5Zs5PCkKBeVB1g/viewform?usp=sf_link"
-                    class="w-full h-[600px]" frameborder="0">Loading…</iframe>
-        </section>
+            <!-- Hero -->
+            <section class="hero">
+                <div class="hero-eyebrow">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
+                    Privacy-first · Runs locally
+                </div>
+                <h1>Redact your statements<br>in seconds</h1>
+                <p>Upload credit card PDFs, whitelist the transactions you want to keep, and download clean redacted files — ready to share.</p>
+            </section>
+
+            <!-- Main two-col -->
+            <div class="main-grid">
+
+                <!-- How it works -->
+                <div class="card how-card">
+                    <h2>How it works</h2>
+                    <p>Upload one or more credit card statement PDFs, enter keywords for the transactions you want to keep, and download redacted files as they finish.</p>
+                    <ul class="how-list">
+                        <li>Multi-file upload — process several months at once</li>
+                        <li>Auto-detects AMEX and Barclaycard formats</li>
+                        <li>Each file is ready to download as soon as it's done</li>
+                        <li>Filename shows the whitelisted total for easy reference</li>
+                    </ul>
+                    <div class="example-keywords">
+                        <p>Example keywords</p>
+                        <code>Tfl Travel, Hyperoptic, Your-Saving</code>
+                    </div>
+                </div>
+
+                <!-- Form -->
+                <div class="card form-card">
+                    <h2>Redact statements</h2>
+                    <div class="form-stack">
+
+                        <!-- Provider -->
+                        <div class="field">
+                            <label>Card provider</label>
+                            <select id="provider">
+                                {% for value, display in providers %}
+                                <option value="{{ value }}" {% if value == 'auto' %}selected{% endif %}>{{ display }}</option>
+                                {% endfor %}
+                            </select>
+                            <span class="hint">Auto-detect works for most statements</span>
+                        </div>
+
+                        <!-- Barclaycard tip -->
+                        <div id="barclaycard-tip" class="provider-tip">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                            </svg>
+                            <span><strong>Barclaycard</strong> — precise row-by-row redaction with financial privacy. Enter merchant keywords.</span>
+                        </div>
+
+                        <!-- File picker -->
+                        <div class="field">
+                            <label>PDF statements <span>(one or more)</span></label>
+                            <div id="drop-zone" class="drop-zone" onclick="document.getElementById('pdf-input').click()">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                                    <polyline points="17 8 12 3 7 8"/>
+                                    <line x1="12" y1="3" x2="12" y2="15"/>
+                                </svg>
+                                <p class="drop-label">Drop PDFs here or <strong>browse</strong></p>
+                                <p class="drop-sub">PDF files only</p>
+                                <input id="pdf-input" type="file" accept=".pdf" multiple style="display:none">
+                            </div>
+                            <ul id="file-list" class="file-list"></ul>
+                        </div>
+
+                        <!-- Keywords -->
+                        <div class="field">
+                            <label>Keywords to keep <span>(comma-separated)</span></label>
+                            <input id="keywords" type="text" placeholder="e.g. Tfl Travel, Hyperoptic, Your-Saving">
+                        </div>
+
+                        <!-- Enhanced privacy toggle -->
+                        <div class="toggle-row">
+                            <div class="toggle-wrap">
+                                <input type="checkbox" id="enhanced_privacy">
+                                <label class="toggle-track" for="enhanced_privacy">
+                                    <div class="toggle-thumb"></div>
+                                </label>
+                            </div>
+                            <label for="enhanced_privacy" class="toggle-label-text" style="cursor:pointer">
+                                Enhanced financial privacy
+                                <small>Also redact balances, credit limit, and rates</small>
+                            </label>
+                        </div>
+
+                        <!-- Submit -->
+                        <button id="submit-btn" class="btn-primary" onclick="processFiles()">
+                            <span id="btn-text">Redact PDFs</span>
+                            <div id="btn-spinner" class="spinner"></div>
+                        </button>
+
+                    </div>
+                </div>
+            </div>
+
+            <!-- Results -->
+            <div id="results-section" class="results-section" style="display:none">
+                <p class="results-heading">Redacted files</p>
+                <div id="results" class="results-list"></div>
+            </div>
+
+            <!-- Custom request -->
+            <div class="card custom-section" style="padding:28px">
+                <h2>Need a custom solution?</h2>
+                <p>Get in touch if you need a tailored redaction workflow for your business or use case.</p>
+                <div class="iframe-wrap">
+                    <iframe src="https://docs.google.com/forms/d/e/1FAIpQLSd2PkHw7ATLfQYwL0CwdkKOnLynPU6mRweu5Zs5PCkKBeVB1g/viewform?usp=sf_link">Loading…</iframe>
+                </div>
+            </div>
+
+        </div>
     </main>
 
-    <footer class="w-full text-center py-4 bg-gray-200">
-        <p class="text-gray-600">&copy; 2024 Credit Card Statement Redaction Tool. All rights reserved.</p>
+    <footer class="site-footer">
+        <div class="container">
+            &copy; 2024 Redact. All rights reserved.
+        </div>
     </footer>
+</div>
 
 <script>
+// --- Theme toggle ---
+// Reads saved preference; falls back to system default (no class = system)
+(function() {
+    const saved = localStorage.getItem('theme');
+    if (saved === 'dark')  document.documentElement.classList.add('dark');
+    if (saved === 'light') document.documentElement.classList.add('light');
+    // no saved pref → no class → @media prefers-color-scheme kicks in
+})();
+
+function toggleTheme() {
+    const html = document.documentElement;
+    const isDark = html.classList.contains('dark') ||
+        (!html.classList.contains('light') && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    if (isDark) {
+        html.classList.remove('dark');
+        html.classList.add('light');
+        localStorage.setItem('theme', 'light');
+    } else {
+        html.classList.remove('light');
+        html.classList.add('dark');
+        localStorage.setItem('theme', 'dark');
+    }
+}
+
 // --- Provider UI ---
 function updateProviderUI() {
     const provider = document.getElementById('provider').value;
     const tip = document.getElementById('barclaycard-tip');
     const kw  = document.getElementById('keywords');
     if (provider === 'barclaycard') {
-        tip.classList.remove('hidden');
+        tip.classList.add('visible');
         kw.placeholder = 'e.g. Tfl Travel, Hyperoptic, Your-Saving';
     } else {
-        tip.classList.add('hidden');
+        tip.classList.remove('visible');
         kw.placeholder = 'e.g. Office Supplies, Travel, Client Dinner';
     }
 }
@@ -174,18 +1051,17 @@ document.getElementById('provider').addEventListener('change', updateProviderUI)
 document.addEventListener('DOMContentLoaded', updateProviderUI);
 
 // --- File picker ---
-const pdfInput  = document.getElementById('pdf-input');
-const dropZone  = document.getElementById('drop-zone');
-const fileList  = document.getElementById('file-list');
+const pdfInput = document.getElementById('pdf-input');
+const dropZone = document.getElementById('drop-zone');
+const fileList = document.getElementById('file-list');
 
 pdfInput.addEventListener('change', renderFileList);
 
-dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('border-indigo-500'); });
-dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-indigo-500'));
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
 dropZone.addEventListener('drop', e => {
     e.preventDefault();
-    dropZone.classList.remove('border-indigo-500');
-    // Merge dropped files with existing selection
+    dropZone.classList.remove('drag-over');
     const dt = new DataTransfer();
     [...(pdfInput.files || [])].forEach(f => dt.items.add(f));
     [...e.dataTransfer.files].filter(f => f.type === 'application/pdf').forEach(f => dt.items.add(f));
@@ -196,12 +1072,16 @@ dropZone.addEventListener('drop', e => {
 function renderFileList() {
     const files = [...pdfInput.files];
     fileList.innerHTML = files.map((f, i) =>
-        `<li class="flex items-center justify-between bg-gray-50 rounded px-3 py-1">
-            <span class="truncate max-w-xs">📄 ${f.name}</span>
-            <button onclick="removeFile(${i})" class="text-gray-400 hover:text-red-500 ml-2 text-xs">✕</button>
+        `<li class="file-item">
+            <span>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#8b5cf6;flex-shrink:0">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
+                </svg>
+                <span class="file-name">${f.name}</span>
+            </span>
+            <button class="remove-btn" onclick="removeFile(${i})" title="Remove">✕</button>
         </li>`
     ).join('');
-    // Auto-detect Barclaycard if any file has "barclay" in name
     if (files.some(f => f.name.toLowerCase().includes('barclay'))) {
         document.getElementById('provider').value = 'barclaycard';
         updateProviderUI();
@@ -215,37 +1095,31 @@ function removeFile(idx) {
     renderFileList();
 }
 
-// --- Process files one by one, show results as they finish ---
+// --- Process files ---
 async function processFiles() {
     const files    = [...pdfInput.files];
     const keywords = document.getElementById('keywords').value.trim();
     const provider = document.getElementById('provider').value;
     const privacy  = document.getElementById('enhanced_privacy').checked;
 
-    if (!files.length)  { alert('Please select at least one PDF.'); return; }
-    if (!keywords)      { alert('Please enter at least one keyword.'); return; }
+    if (!files.length)  { shakeField('drop-zone'); return; }
+    if (!keywords)      { shakeField('keywords'); return; }
 
     const btn     = document.getElementById('submit-btn');
     const btnText = document.getElementById('btn-text');
     const spinner = document.getElementById('btn-spinner');
-    btn.disabled  = true;
-    spinner.classList.remove('hidden');
+    btn.disabled = true;
+    spinner.classList.add('visible');
     btnText.textContent = `Processing 0 / ${files.length}…`;
 
-    const results = document.getElementById('results');
-    // Add a header if not already there
-    if (!document.getElementById('results-heading')) {
-        const h = document.createElement('h2');
-        h.id = 'results-heading';
-        h.className = 'text-xl font-bold text-gray-800 mb-2';
-        h.textContent = 'Redacted Files';
-        results.prepend(h);
-    }
+    const section  = document.getElementById('results-section');
+    const results  = document.getElementById('results');
+    section.style.display = 'block';
 
     let done = 0;
-    // Process sequentially so server isn't overwhelmed
     for (const file of files) {
-        const card = addPendingCard(file.name, results);
+        const card = addPendingCard(file.name);
+        results.appendChild(card);
         try {
             const fd = new FormData();
             fd.append('pdf', file);
@@ -259,8 +1133,10 @@ async function processFiles() {
             if (data.error) {
                 updateCard(card, 'error', file.name, null, data.error);
             } else {
-                updateCard(card, 'success', data.filename, data.download_url,
-                           `${data.kept_count} transaction${data.kept_count !== 1 ? 's' : ''} · £${data.total.toFixed(2)}`);
+                const detail = data.kept_count >= 0
+                    ? `${data.kept_count} transaction${data.kept_count !== 1 ? 's' : ''} · £${data.total.toFixed(2)}`
+                    : `£${data.total.toFixed(2)} total`;
+                updateCard(card, 'success', data.filename, data.download_url, detail);
             }
         } catch (err) {
             updateCard(card, 'error', file.name, null, err.message);
@@ -270,45 +1146,70 @@ async function processFiles() {
     }
 
     btn.disabled = false;
-    spinner.classList.add('hidden');
+    spinner.classList.remove('visible');
     btnText.textContent = 'Redact PDFs';
 }
 
-function addPendingCard(filename, container) {
+function addPendingCard(filename) {
     const card = document.createElement('div');
-    card.className = 'flex items-center gap-3 bg-white rounded-lg shadow-sm px-5 py-4 border border-gray-200';
+    card.className = 'result-card';
     card.innerHTML = `
-        <svg class="animate-spin h-5 w-5 text-indigo-500 flex-shrink-0" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
-        </svg>
-        <span class="text-gray-600 text-sm truncate flex-1">Processing <strong>${filename}</strong>…</span>`;
-    container.appendChild(card);
+        <div class="result-icon" style="background:var(--bg-elevated)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                 style="animation:spin 0.7s linear infinite">
+                <line x1="12" y1="2" x2="12" y2="6"/><line x1="12" y1="18" x2="12" y2="22"/>
+                <line x1="4.93" y1="4.93" x2="7.76" y2="7.76"/><line x1="16.24" y1="16.24" x2="19.07" y2="19.07"/>
+                <line x1="2" y1="12" x2="6" y2="12"/><line x1="18" y1="12" x2="22" y2="12"/>
+                <line x1="4.93" y1="19.07" x2="7.76" y2="16.24"/><line x1="16.24" y1="7.76" x2="19.07" y2="4.93"/>
+            </svg>
+        </div>
+        <div class="result-info">
+            <p class="result-name">${filename}</p>
+            <p class="result-detail">Processing…</p>
+        </div>`;
     return card;
 }
 
 function updateCard(card, status, filename, url, detail) {
+    card.className = `result-card ${status}`;
     if (status === 'success') {
-        card.className = 'flex items-center gap-3 bg-green-50 rounded-lg shadow-sm px-5 py-4 border border-green-200';
         card.innerHTML = `
-            <span class="text-green-500 text-xl flex-shrink-0">✅</span>
-            <div class="flex-1 min-w-0">
-                <p class="text-sm font-medium text-gray-800 truncate">${filename}</p>
-                <p class="text-xs text-gray-500">${detail}</p>
+            <div class="result-icon" style="background:rgba(16,185,129,0.12)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="20 6 9 17 4 12"/>
+                </svg>
             </div>
-            <a href="${url}" download
-               class="flex-shrink-0 flex items-center gap-1 text-sm font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-md transition-colors">
-                ⬇ Download
+            <div class="result-info">
+                <p class="result-name">${filename}</p>
+                <p class="result-detail">${detail}</p>
+            </div>
+            <a href="${url}" download class="btn-download">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                    <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Download
             </a>`;
     } else {
-        card.className = 'flex items-center gap-3 bg-red-50 rounded-lg shadow-sm px-5 py-4 border border-red-200';
         card.innerHTML = `
-            <span class="text-red-500 text-xl flex-shrink-0">❌</span>
-            <div class="flex-1 min-w-0">
-                <p class="text-sm font-medium text-gray-800 truncate">${filename}</p>
-                <p class="text-xs text-red-600">${detail}</p>
+            <div class="result-icon" style="background:rgba(248,113,113,0.1)">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--error)" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+            </div>
+            <div class="result-info">
+                <p class="result-name">${filename}</p>
+                <p class="result-detail">${detail}</p>
             </div>`;
     }
+}
+
+function shakeField(id) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.style.animation = 'none';
+    el.style.outline = '2px solid var(--error)';
+    setTimeout(() => { el.style.outline = ''; }, 1200);
 }
 </script>
 </body>
