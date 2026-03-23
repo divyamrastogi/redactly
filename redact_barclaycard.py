@@ -202,6 +202,91 @@ def group_transactions(page):
     return transactions, section_start_y, section_end_y_by_col.get(0)
 
 
+def redact_financial_summary(doc):
+    """
+    Redact financial summary fields from all pages:
+    - Card number
+    - New balance, previous balance, activity, interest, other charges
+    - Minimum payment amount
+    - Available to spend, credit limit
+    - Interest rates and estimated interest
+    - Payment amounts on page 2 summary
+    Keeps: name, address, payment due DATE, website, phone numbers.
+    """
+    # Patterns whose values should be redacted (label + value on same or next span)
+    REDACT_LABELS = [
+        "Your new balance",
+        "Minimum payment",
+        "Your previous balance",
+        "Payments towards your account",
+        "Your new activity",
+        "Interest charged",
+        "Other charges",
+        "Available to spend",
+        "Your current credit limit",
+        "Estimated interest next month",
+        "Simple standard rate p.a",
+        "Simple cash rate p.a",
+        "Transactions, interest and charges",
+        "Number ",          # card number line
+    ]
+    # Standalone value patterns to always redact on financial pages
+    REDACT_VALUE_RE = re.compile(
+        r'^(£[\d,]+\.\d{2}|'           # £ amounts
+        r'\d{4}\s+\d{4}\s+\d{4}\s+\d{4}|'  # card number
+        r'\d+\.\d+%|'                  # interest rates
+        r'\(\d+\.\d+%\s+compound.*\))$',  # compound equivalent
+        re.IGNORECASE
+    )
+
+    for page_num in range(len(doc)):
+        page = doc[page_num]
+        spans = []
+        for block in page.get_text("dict")["blocks"]:
+            if "lines" not in block: continue
+            for line in block["lines"]:
+                for span in line["spans"]:
+                    if span["text"].strip():
+                        spans.append(span)
+
+        # Sort by y then x
+        spans.sort(key=lambda s: (round(s["bbox"][1]/4)*4, s["bbox"][0]))
+
+        # Mark which y-rows contain a redactable label
+        redact_y_rows = set()
+        for s in spans:
+            t = s["text"].strip()
+            if any(lbl.lower() in t.lower() for lbl in REDACT_LABELS):
+                redact_y_rows.add(round(s["bbox"][1] / 4) * 4)
+
+        for s in spans:
+            t    = s["text"].strip()
+            bbox = s["bbox"]
+            rect = fitz.Rect(bbox)
+            y_key = round(bbox[1] / 4) * 4
+
+            # Redact card number span
+            if re.match(r'\d{4}\s+\d{4}\s+\d{4}\s+\d{4}', t) or \
+               re.match(r'Number\s+\d{4}', t):
+                page.add_redact_annot(rect, fill=(0, 0, 0))
+                continue
+
+            # Redact values on labelled rows (amounts, rates)
+            if y_key in redact_y_rows and REDACT_VALUE_RE.match(t):
+                page.add_redact_annot(rect, fill=(0, 0, 0))
+                continue
+
+            # On page 2: redact ALL £ amounts in the summary header area
+            # (both columns, y < section_start ~185) — covers Direct Debit payment,
+            # "How you've used your card" subtotal, new balance, minimum payment, etc.
+            if page_num == 1 and bbox[1] < 200:
+                if REDACT_VALUE_RE.match(t) and t.startswith('£'):
+                    page.add_redact_annot(rect, fill=(0, 0, 0))
+                    continue
+
+        page.apply_redactions()
+
+
 def redact_barclaycard(input_path, output_path, keep_keywords):
     """
     Redact all transactions from a BarclayCard statement that don't match keep_keywords.
@@ -245,6 +330,9 @@ def redact_barclaycard(input_path, output_path, keep_keywords):
 
     total = sum(kept)
     logger.info(f"\nKept {len(kept)} transactions totalling £{total:.2f}")
+
+    # Redact financial summary fields (balances, limits, rates, card number)
+    redact_financial_summary(doc)
 
     # Add total annotation on last transaction page (page 2 = index 1)
     if len(doc) > 1:
