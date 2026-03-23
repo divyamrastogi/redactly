@@ -364,6 +364,15 @@ if __name__ == "__main__":
     output_pdf = sys.argv[2]
     keywords   = sys.argv[3:]
 
-    out, total, kept_amounts = redact_barclaycard(input_pdf, output_pdf, keywords)
+    # Use a temp name first, then rename with total
+    import tempfile
+    tmp_out = output_pdf
+    out, total, kept_amounts = redact_barclaycard(input_pdf, tmp_out, keywords)
+
+    # Rename to include total amount
+    base = os.path.splitext(output_pdf)[0]
+    final_out = f"{base}_£{total:.2f}.pdf"
+    os.rename(out, final_out)
+
     print(f"\nDone. Kept {len(kept_amounts)} transactions = £{total:.2f}")
-    print(f"Output: {out}")
+    print(f"Output: {final_out}")

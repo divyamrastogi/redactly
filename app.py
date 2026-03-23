@@ -208,7 +208,8 @@ def index():
                 enhanced_privacy = request.form.get('enhanced_privacy') == 'on'
                 
                 try:
-                    output_filename = f"redacted_{file.filename}"
+                    base_name = os.path.splitext(file.filename)[0]
+                    output_filename = f"redacted_{base_name}.pdf"  # total appended after processing
 
                     # Auto-detect Barclaycard from filename, explicit selection, or PDF content
                     filename_lower = file.filename.lower()
@@ -235,6 +236,11 @@ def index():
                         redacted_file_path, total_remaining, kept = redact_barclaycard(
                             input_path, output_filename, keywords
                         )
+                        # Rename output file to include total
+                        total_filename = f"redacted_{base_name}_£{total_remaining:.2f}.pdf"
+                        if os.path.exists(redacted_file_path):
+                            os.rename(redacted_file_path, total_filename)
+                            redacted_file_path = total_filename
                         kept_count = len(kept)
                         message = f'''
                         <strong>✅ Barclaycard statement redacted</strong><br>
