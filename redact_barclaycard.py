@@ -35,8 +35,10 @@ COLUMNS = [
     {"date": (325, 365), "merch": (355, 520),  "amt": (515, 570), "e": (515, 530)},
 ]
 
-DATE_PATTERN   = re.compile(r'^\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)$')
-AMOUNT_PATTERN = re.compile(r'^£\d{1,3}(,\d{3})*\.\d{2}$')
+DATE_PATTERN        = re.compile(r'^\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)$')
+# Some PyMuPDF versions merge date + merchant into one span e.g. "24 Aug Tfl Travel CH..."
+DATE_PREFIX_PATTERN = re.compile(r'^(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))\s+(.+)$')
+AMOUNT_PATTERN      = re.compile(r'^£\d{1,3}(,\d{3})*\.\d{2}$')
 
 # Section header that starts the transactions we care about
 SECTION_START_TEXTS = ["How you've used your card", "How you\u2019ve used your card"]
@@ -176,8 +178,15 @@ def group_transactions(page):
             for s in row:
                 bbox = s["bbox"]
                 text = s["text"]
+                merged = DATE_PREFIX_PATTERN.match(text) if text else None
                 if DATE_PATTERN.match(text) and is_in_x_range(bbox, d_min, d_max):
                     date_span = s
+                elif merged and is_in_x_range(bbox, d_min, d_max + 300):
+                    # Merged "DD Mon Merchant Name" span — split it
+                    date_only  = merged.group(1)
+                    merch_only = merged.group(2)
+                    date_span  = {"text": date_only,  "bbox": bbox}
+                    merch_spans.append({"text": merch_only, "bbox": bbox})
                 elif AMOUNT_PATTERN.match(text) and is_in_x_range(bbox, a_min, a_max):
                     amount_span = s
                 elif text == 'e' and is_in_x_range(bbox, e_min, e_max):
