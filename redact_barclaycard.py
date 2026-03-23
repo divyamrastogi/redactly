@@ -92,14 +92,41 @@ def group_transactions(page):
         logger.warning("Could not find transaction section start — no transactions found")
         return [], None, None
 
-    # Find end markers per column (left vs right)
+    # Find end markers — "Promotional transactions" can appear in either column.
+    # Strategy: find ALL instances and assign to columns by x, but also track the
+    # maximum y of any date-pattern span per column to use as a fallback end boundary.
     for s in spans:
         if any(t in s["text"] for t in SECTION_END_TEXTS):
             x0 = s["bbox"][0]
-            col_idx = 1 if x0 > 300 else 0
-            if col_idx not in section_end_y_by_col:
-                section_end_y_by_col[col_idx] = s["bbox"][1]
-                logger.info(f"Column {col_idx} section ends at y={s['bbox'][1]:.1f} ('{s['text'][:30]}')")
+            # Assign to column by which column's x range it falls in
+            assigned_col = None
+            for ci, col in enumerate(COLUMNS):
+                # Use tight column boundary — midpoint between columns is ~310
+                col_mid = 310
+                if ci == 0 and s["bbox"][0] < col_mid:
+                    assigned_col = ci
+                    break
+                elif ci == 1 and s["bbox"][0] >= col_mid:
+                    assigned_col = ci
+                    break
+            if assigned_col is None:
+                assigned_col = 1 if x0 > 300 else 0
+            if assigned_col not in section_end_y_by_col:
+                section_end_y_by_col[assigned_col] = s["bbox"][1]
+                logger.info(f"Column {assigned_col} section ends at y={s['bbox'][1]:.1f} ('{s['text'][:30]}')")
+
+    # For any column without an explicit end marker, find the last date-pattern row
+    # in that column as a fallback (prevents false truncation from cross-column text)
+    for ci, col in enumerate(COLUMNS):
+        if ci not in section_end_y_by_col:
+            last_date_y = None
+            for s in spans:
+                if (DATE_PATTERN.match(s["text"].strip())
+                        and is_in_x_range(s["bbox"], col["date"][0], col["date"][1])):
+                    last_date_y = s["bbox"][3]
+            if last_date_y:
+                section_end_y_by_col[ci] = last_date_y + 20
+                logger.info(f"Column {ci} section end inferred from last date: y={last_date_y:.1f}")
 
     # Process each column separately
     transactions = []
