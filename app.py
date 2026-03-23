@@ -418,3 +418,36 @@ def download_file(filename):
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
+
+
+@app.route('/debug-redact', methods=['POST'])
+def debug_redact():
+    """Debug endpoint — returns transaction list without redacting."""
+    import uuid, fitz as _fitz
+    from redact_barclaycard import group_transactions, COLUMNS
+    
+    file = request.files.get('pdf')
+    if not file:
+        return jsonify({'error': 'no file'}), 400
+    
+    tmp = f"tmp_dbg_{uuid.uuid4().hex}.pdf"
+    file.save(tmp)
+    try:
+        doc = _fitz.open(tmp)
+        result = []
+        for page_num in range(len(doc)):
+            page = doc[page_num]
+            txs, start_y, end_y = group_transactions(page)
+            for tx in txs:
+                result.append({
+                    'page': page_num + 1,
+                    'date': tx['date'],
+                    'merchant': tx['merchant'],
+                    'amount': tx['amount'],
+                    'col': tx.get('col', 0),
+                })
+        doc.close()
+        return jsonify({'count': len(result), 'transactions': result})
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
