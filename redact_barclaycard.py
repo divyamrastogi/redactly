@@ -305,10 +305,10 @@ def redact_financial_summary(doc):
                 page.add_redact_annot(rect, fill=(0, 0, 0))
                 continue
 
-            # On page 2 LEFT column only: redact summary amounts above transactions
+            # On page 2 LEFT column only: redact summary amounts ABOVE transaction section
             # (Direct Debit payment line, "Transactions total" subtotals)
-            # Use x<300 to avoid touching right-column transaction amounts (24 Aug, 25 Aug TFL etc.)
-            if page_num == 1 and bbox[1] < 200 and bbox[0] < 300:
+            # Use section_start_y (≈183) as boundary — don't touch transaction rows below it
+            if page_num == 1 and bbox[1] < 182 and bbox[0] < 300:
                 if REDACT_VALUE_RE.match(t) and t.startswith('£'):
                     page.add_redact_annot(rect, fill=(0, 0, 0))
                     continue
