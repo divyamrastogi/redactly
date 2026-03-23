@@ -1,4 +1,4 @@
-from flask import Flask, request, send_file, after_this_request, render_template_string
+from flask import Flask, request, send_file, after_this_request, render_template_string, jsonify
 import os
 import logging
 from redact_transactions import redact_transactions
@@ -39,17 +39,13 @@ HTML_TEMPLATE = '''
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Credit Card Statement Redaction Tool | Whitelist Transactions</title>
-    <meta name="description" content="Redact your credit card statements easily. Supports AMEX, Barclaycard, Visa, Mastercard and more. Keep only the transactions you want by specifying keywords. Perfect for expense reimbursements and financial privacy.">
+    <meta name="description" content="Redact your credit card statements easily. Supports AMEX, Barclaycard, Visa, Mastercard and more.">
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
-    
-    <!-- Google tag (gtag.js) -->
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-SY9PXXMVD8"></script>
     <script>
     window.dataLayer = window.dataLayer || [];
     function gtag(){dataLayer.push(arguments);}
     gtag('js', new Date());
-
     gtag('config', 'G-SY9PXXMVD8');
     </script>
 </head>
@@ -58,228 +54,354 @@ HTML_TEMPLATE = '''
         <h1 class="text-4xl font-bold">Credit Card Statement Redaction Tool</h1>
         <p class="mt-2 text-xl">Whitelist Your Important Transactions</p>
         <p class="mt-1 text-sm text-gray-300">Supports AMEX, Barclaycard, Visa, Mastercard and more</p>
-        {% if usage_count %}
-        <p class="mt-2 text-sm">This tool has been used {{ usage_count }} times</p>
-        {% endif %}
+        {% if usage_count %}<p class="mt-2 text-sm">Used {{ usage_count }} times</p>{% endif %}
     </header>
-    <main class="flex-grow container mx-auto px-4 py-8">
+
+    <main class="flex-grow container mx-auto px-4 py-8 max-w-5xl">
         <div class="flex flex-col md:flex-row gap-8 mb-8">
+
+            <!-- How it works -->
             <section class="bg-white p-8 rounded-lg shadow-md md:w-1/2">
                 <h2 class="text-2xl font-bold mb-4 text-gray-800">How It Works</h2>
-                <p class="text-gray-600 mb-4">
-                    This tool works with American Express and Barclaycard credit card statements. It allows you to:
-                </p>
-                <ul class="list-disc list-inside text-gray-600 mb-4">
-                    <li>Upload your credit card statement PDF</li>
-                    <li>Auto-detect provider or manually select</li>
-                    <li>Specify keywords for transactions you want to keep</li>
-                    <li>Automatically redact all other transactions</li>
+                <p class="text-gray-600 mb-4">Upload one or more credit card statement PDFs, enter keywords for the transactions you want to keep, and download the redacted files as they finish.</p>
+                <ul class="list-disc list-inside text-gray-600 mb-4 space-y-1">
+                    <li>Multi-file upload — process several months at once</li>
+                    <li>Auto-detects AMEX and Barclaycard</li>
+                    <li>Each file appears as soon as it's ready</li>
+                    <li>Filename includes the whitelisted total</li>
                 </ul>
-                <p class="text-gray-600 mb-4">
-                    <strong>Example:</strong> If you want to keep only work-related expenses, you might use keywords like "Office Supplies", "Travel", or "Client Dinner".
-                </p>
-                <p class="text-gray-600">
-                    Perfect for submitting reimbursements by maintaining financial privacy, or focusing on specific types of transactions.
-                </p>
+                <p class="text-gray-600"><strong>Example keywords:</strong> <em>Tfl Travel, Hyperoptic, Your-Saving</em></p>
             </section>
+
+            <!-- Form -->
             <div class="bg-white p-8 rounded-lg shadow-md md:w-1/2">
-                <h2 class="text-2xl font-bold mb-6 text-center text-gray-800">Redact Your Statement</h2>
-                {% if message %}
-                    <div class="mb-4 p-4 rounded {% if error %}bg-red-100 text-red-700{% else %}bg-green-100 text-green-700{% endif %}">
-                        {{ message | safe }}
-                    </div>
-                {% endif %}
-                <form method="post" enctype="multipart/form-data" class="space-y-4">
+                <h2 class="text-2xl font-bold mb-6 text-center text-gray-800">Redact Statements</h2>
+
+                <div class="space-y-4">
+                    <!-- Provider -->
                     <div>
-                        <label for="provider" class="block text-sm font-medium text-gray-700">Credit Card Provider</label>
-                        <select name="provider" id="provider" 
-                                class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                        <label class="block text-sm font-medium text-gray-700">Credit Card Provider</label>
+                        <select id="provider" class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
                             {% for value, display in providers %}
                             <option value="{{ value }}" {% if value == 'auto' %}selected{% endif %}>{{ display }}</option>
                             {% endfor %}
                         </select>
-                        <p class="mt-1 text-xs text-gray-500">Leave as Auto-detect for automatic provider detection</p>
+                        <p class="mt-1 text-xs text-gray-500">Auto-detect works for most statements</p>
                     </div>
 
-                    <!-- Barclaycard tip — shown when barclaycard is selected -->
+                    <!-- Barclaycard tip -->
                     <div id="barclaycard-tip" class="hidden bg-blue-50 border border-blue-200 rounded-md p-3 text-sm text-blue-700">
-                        <strong>🏦 Barclaycard detected</strong> — uses precise row-by-row redaction.
-                        Enter merchant name keywords (e.g. <em>Hyperoptic, Tfl Travel, Your-Saving</em>).
+                        <strong>🏦 Barclaycard</strong> — precise row-by-row redaction + financial privacy. Enter merchant keywords.
                     </div>
 
+                    <!-- File picker -->
                     <div>
-                        <label for="pdf" class="block text-sm font-medium text-gray-700">Select Credit Card Statement PDF</label>
-                        <input type="file" name="pdf" id="pdf" accept=".pdf" required
-                               class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
-                    </div>
-                    <div>
-                        <label for="keywords" class="block text-sm font-medium text-gray-700">Keywords to Keep (comma-separated)</label>
-                        <input type="text" name="keywords" id="keywords" placeholder="e.g. Hyperoptic, Tfl Travel, Your-Saving" required
-                               class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
-                    </div>
-                    <div id="privacy-option">
-                        <div class="flex items-center">
-                            <input type="checkbox" name="enhanced_privacy" id="enhanced_privacy" 
-                                   class="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded">
-                            <label for="enhanced_privacy" class="ml-2 block text-sm text-gray-700">
-                                <strong>Enhanced Financial Privacy</strong>
-                            </label>
+                        <label class="block text-sm font-medium text-gray-700">PDF Statements <span class="text-gray-400">(one or more)</span></label>
+                        <div id="drop-zone"
+                             class="mt-1 flex flex-col items-center justify-center border-2 border-dashed border-gray-300 rounded-md px-6 py-8 cursor-pointer hover:border-indigo-400 transition-colors"
+                             onclick="document.getElementById('pdf-input').click()">
+                            <svg class="w-10 h-10 text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+                            </svg>
+                            <p class="text-sm text-gray-500">Drop PDFs here or <span class="text-indigo-600 font-medium">browse</span></p>
+                            <input id="pdf-input" type="file" accept=".pdf" multiple class="hidden">
                         </div>
-                        <p class="mt-1 text-xs text-gray-500">
-                            Also redact personal details, account numbers, and balances (AMEX only — Barclaycard uses precise redaction regardless)
-                        </p>
+                        <!-- Selected files list -->
+                        <ul id="file-list" class="mt-2 space-y-1 text-sm text-gray-600"></ul>
                     </div>
-                    <script>
-                        function updateProviderUI() {
-                            const provider = document.getElementById('provider').value;
-                            const tip = document.getElementById('barclaycard-tip');
-                            const keywords = document.getElementById('keywords');
-                            if (provider === 'barclaycard') {
-                                tip.classList.remove('hidden');
-                                keywords.placeholder = 'e.g. Hyperoptic, Tfl Travel, Your-Saving';
-                            } else {
-                                tip.classList.add('hidden');
-                                keywords.placeholder = 'e.g. Office Supplies, Travel, Client Dinner';
-                            }
-                        }
-                        document.getElementById('provider').addEventListener('change', updateProviderUI);
-                        document.addEventListener('DOMContentLoaded', updateProviderUI);
 
-                        // Auto-detect Barclaycard from filename
-                        document.getElementById('pdf').addEventListener('change', function() {
-                            const filename = this.files[0]?.name?.toLowerCase() || '';
-                            if (filename.includes('barclay')) {
-                                document.getElementById('provider').value = 'barclaycard';
-                                updateProviderUI();
-                            }
-                        });
-                    </script>
-                    <button type="submit" class="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
-                        Redact PDF
+                    <!-- Keywords -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700">Keywords to Keep <span class="text-gray-400">(comma-separated)</span></label>
+                        <input id="keywords" type="text" placeholder="e.g. Tfl Travel, Hyperoptic, Your-Saving"
+                               class="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-indigo-500 focus:border-indigo-500">
+                    </div>
+
+                    <!-- Enhanced privacy -->
+                    <div class="flex items-start gap-2">
+                        <input id="enhanced_privacy" type="checkbox"
+                               class="mt-1 h-4 w-4 text-indigo-600 border-gray-300 rounded">
+                        <div>
+                            <label for="enhanced_privacy" class="text-sm font-medium text-gray-700">Enhanced Financial Privacy</label>
+                            <p class="text-xs text-gray-500">Also redact balances, credit limit, rates (Barclaycard always applies this)</p>
+                        </div>
+                    </div>
+
+                    <!-- Submit -->
+                    <button id="submit-btn" onclick="processFiles()"
+                            class="w-full flex justify-center items-center gap-2 py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed">
+                        <span id="btn-text">Redact PDFs</span>
+                        <svg id="btn-spinner" class="hidden animate-spin h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+                        </svg>
                     </button>
-                </form>
+                </div>
             </div>
         </div>
-        
-        <!-- Google Form iframe section -->
+
+        <!-- Results area — files appear here as they finish -->
+        <div id="results" class="space-y-3"></div>
+
+        <!-- Google Form -->
         <section class="bg-white p-8 rounded-lg shadow-md mt-8">
             <h2 class="text-2xl font-bold mb-6 text-center text-gray-800">Need a Custom Solution?</h2>
-            <p class="text-gray-600 mb-4 text-center">
-                If you need a modified version of this tool for your specific needs, please fill out the form below:
-            </p>
-            <div class="aspect-w-16 aspect-h-9">
-                <iframe src="https://docs.google.com/forms/d/e/1FAIpQLSd2PkHw7ATLfQYwL0CwdkKOnLynPU6mRweu5Zs5PCkKBeVB1g/viewform?usp=sf_link" 
-                        class="w-full h-[600px]" frameborder="0" marginheight="0" marginwidth="0">
-                    Loading…
-                </iframe>
-            </div>
+            <iframe src="https://docs.google.com/forms/d/e/1FAIpQLSd2PkHw7ATLfQYwL0CwdkKOnLynPU6mRweu5Zs5PCkKBeVB1g/viewform?usp=sf_link"
+                    class="w-full h-[600px]" frameborder="0">Loading…</iframe>
         </section>
     </main>
+
     <footer class="w-full text-center py-4 bg-gray-200">
-        <p class="text-gray-600">&copy; 2024 AMEX Statement Redaction Tool. All rights reserved.</p>
+        <p class="text-gray-600">&copy; 2024 Credit Card Statement Redaction Tool. All rights reserved.</p>
     </footer>
+
+<script>
+// --- Provider UI ---
+function updateProviderUI() {
+    const provider = document.getElementById('provider').value;
+    const tip = document.getElementById('barclaycard-tip');
+    const kw  = document.getElementById('keywords');
+    if (provider === 'barclaycard') {
+        tip.classList.remove('hidden');
+        kw.placeholder = 'e.g. Tfl Travel, Hyperoptic, Your-Saving';
+    } else {
+        tip.classList.add('hidden');
+        kw.placeholder = 'e.g. Office Supplies, Travel, Client Dinner';
+    }
+}
+document.getElementById('provider').addEventListener('change', updateProviderUI);
+document.addEventListener('DOMContentLoaded', updateProviderUI);
+
+// --- File picker ---
+const pdfInput  = document.getElementById('pdf-input');
+const dropZone  = document.getElementById('drop-zone');
+const fileList  = document.getElementById('file-list');
+
+pdfInput.addEventListener('change', renderFileList);
+
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('border-indigo-500'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('border-indigo-500'));
+dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('border-indigo-500');
+    // Merge dropped files with existing selection
+    const dt = new DataTransfer();
+    [...(pdfInput.files || [])].forEach(f => dt.items.add(f));
+    [...e.dataTransfer.files].filter(f => f.type === 'application/pdf').forEach(f => dt.items.add(f));
+    pdfInput.files = dt.files;
+    renderFileList();
+});
+
+function renderFileList() {
+    const files = [...pdfInput.files];
+    fileList.innerHTML = files.map((f, i) =>
+        `<li class="flex items-center justify-between bg-gray-50 rounded px-3 py-1">
+            <span class="truncate max-w-xs">📄 ${f.name}</span>
+            <button onclick="removeFile(${i})" class="text-gray-400 hover:text-red-500 ml-2 text-xs">✕</button>
+        </li>`
+    ).join('');
+    // Auto-detect Barclaycard if any file has "barclay" in name
+    if (files.some(f => f.name.toLowerCase().includes('barclay'))) {
+        document.getElementById('provider').value = 'barclaycard';
+        updateProviderUI();
+    }
+}
+
+function removeFile(idx) {
+    const dt = new DataTransfer();
+    [...pdfInput.files].forEach((f, i) => { if (i !== idx) dt.items.add(f); });
+    pdfInput.files = dt.files;
+    renderFileList();
+}
+
+// --- Process files one by one, show results as they finish ---
+async function processFiles() {
+    const files    = [...pdfInput.files];
+    const keywords = document.getElementById('keywords').value.trim();
+    const provider = document.getElementById('provider').value;
+    const privacy  = document.getElementById('enhanced_privacy').checked;
+
+    if (!files.length)  { alert('Please select at least one PDF.'); return; }
+    if (!keywords)      { alert('Please enter at least one keyword.'); return; }
+
+    const btn     = document.getElementById('submit-btn');
+    const btnText = document.getElementById('btn-text');
+    const spinner = document.getElementById('btn-spinner');
+    btn.disabled  = true;
+    spinner.classList.remove('hidden');
+    btnText.textContent = `Processing 0 / ${files.length}…`;
+
+    const results = document.getElementById('results');
+    // Add a header if not already there
+    if (!document.getElementById('results-heading')) {
+        const h = document.createElement('h2');
+        h.id = 'results-heading';
+        h.className = 'text-xl font-bold text-gray-800 mb-2';
+        h.textContent = 'Redacted Files';
+        results.prepend(h);
+    }
+
+    let done = 0;
+    // Process sequentially so server isn't overwhelmed
+    for (const file of files) {
+        const card = addPendingCard(file.name, results);
+        try {
+            const fd = new FormData();
+            fd.append('pdf', file);
+            fd.append('keywords', keywords);
+            fd.append('provider', provider);
+            if (privacy) fd.append('enhanced_privacy', 'on');
+
+            const res  = await fetch('/redact', { method: 'POST', body: fd });
+            const data = await res.json();
+
+            if (data.error) {
+                updateCard(card, 'error', file.name, null, data.error);
+            } else {
+                updateCard(card, 'success', data.filename, data.download_url,
+                           `${data.kept_count} transaction${data.kept_count !== 1 ? 's' : ''} · £${data.total.toFixed(2)}`);
+            }
+        } catch (err) {
+            updateCard(card, 'error', file.name, null, err.message);
+        }
+        done++;
+        btnText.textContent = done < files.length ? `Processing ${done} / ${files.length}…` : 'Redact PDFs';
+    }
+
+    btn.disabled = false;
+    spinner.classList.add('hidden');
+    btnText.textContent = 'Redact PDFs';
+}
+
+function addPendingCard(filename, container) {
+    const card = document.createElement('div');
+    card.className = 'flex items-center gap-3 bg-white rounded-lg shadow-sm px-5 py-4 border border-gray-200';
+    card.innerHTML = `
+        <svg class="animate-spin h-5 w-5 text-indigo-500 flex-shrink-0" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"/>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
+        </svg>
+        <span class="text-gray-600 text-sm truncate flex-1">Processing <strong>${filename}</strong>…</span>`;
+    container.appendChild(card);
+    return card;
+}
+
+function updateCard(card, status, filename, url, detail) {
+    if (status === 'success') {
+        card.className = 'flex items-center gap-3 bg-green-50 rounded-lg shadow-sm px-5 py-4 border border-green-200';
+        card.innerHTML = `
+            <span class="text-green-500 text-xl flex-shrink-0">✅</span>
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium text-gray-800 truncate">${filename}</p>
+                <p class="text-xs text-gray-500">${detail}</p>
+            </div>
+            <a href="${url}" download
+               class="flex-shrink-0 flex items-center gap-1 text-sm font-medium text-indigo-600 hover:text-indigo-800 bg-indigo-50 hover:bg-indigo-100 px-3 py-1.5 rounded-md transition-colors">
+                ⬇ Download
+            </a>`;
+    } else {
+        card.className = 'flex items-center gap-3 bg-red-50 rounded-lg shadow-sm px-5 py-4 border border-red-200';
+        card.innerHTML = `
+            <span class="text-red-500 text-xl flex-shrink-0">❌</span>
+            <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium text-gray-800 truncate">${filename}</p>
+                <p class="text-xs text-red-600">${detail}</p>
+            </div>`;
+    }
+}
+</script>
 </body>
 </html>
 '''
 
-@app.route('/', methods=['GET', 'POST'])
-def index():
-    message = None
-    error = False
-    usage_count = update_usage_counter()
-    
-    # Get providers for dropdown
-    providers = get_all_providers()
+def process_single_file(file, keywords, provider, enhanced_privacy):
+    """Process one uploaded PDF. Returns (redacted_path, total, kept_count)."""
+    import uuid, fitz as _fitz
 
-    if request.method == 'POST':
-        if 'pdf' not in request.files:
-            message = 'No file part'
-            error = True
+    tmp_in = f"tmp_in_{uuid.uuid4().hex}.pdf"
+    file.save(tmp_in)
+    try:
+        base_name = os.path.splitext(file.filename)[0]
+        tmp_out   = f"tmp_out_{uuid.uuid4().hex}.pdf"
+
+        # Auto-detect provider from PDF content
+        filename_lower = file.filename.lower()
+        if provider == 'auto':
+            try:
+                _doc  = _fitz.open(tmp_in)
+                _text = _doc[0].get_text().lower() if len(_doc) > 0 else ''
+                _doc.close()
+                if 'barclaycard' in _text or 'barclays' in _text or 'mastercard avios' in _text:
+                    provider = 'barclaycard'
+            except Exception:
+                pass
+
+        is_barclaycard = (
+            provider == 'barclaycard' or
+            'barclaycard' in filename_lower or
+            'barclay' in filename_lower
+        )
+
+        if is_barclaycard:
+            redacted_path, total, kept = redact_barclaycard(tmp_in, tmp_out, keywords)
+            kept_count   = len(kept)
+        elif enhanced_privacy:
+            redacted_path, total = redact_amex_with_privacy(tmp_in, keywords, tmp_out, redact_financial=True)
+            kept_count = -1  # AMEX doesn't return count
         else:
-            file = request.files['pdf']
-            if file.filename == '':
-                message = 'No selected file'
-                error = True
-            elif file:
-                input_path = 'temp_input.pdf'
-                file.save(input_path)
-                keywords = [k.strip() for k in request.form.get('keywords', '').split(',') if k.strip()]
-                provider = request.form.get('provider', 'auto')
-                enhanced_privacy = request.form.get('enhanced_privacy') == 'on'
-                
-                try:
-                    base_name = os.path.splitext(file.filename)[0]
-                    output_filename = f"redacted_{base_name}.pdf"  # total appended after processing
+            redacted_path, total = redact_pdf_generic(tmp_in, keywords, tmp_out, provider)
+            kept_count = -1
 
-                    # Auto-detect Barclaycard from filename, explicit selection, or PDF content
-                    filename_lower = file.filename.lower()
-                    if provider == 'auto':
-                        # Peek at PDF text to detect provider reliably
-                        try:
-                            import fitz as _fitz
-                            _doc = _fitz.open(input_path)
-                            _text = _doc[0].get_text().lower() if len(_doc) > 0 else ''
-                            _doc.close()
-                            if 'barclaycard' in _text or 'barclays' in _text or 'mastercard avios' in _text:
-                                provider = 'barclaycard'
-                        except Exception:
-                            pass
+        # Rename with total in filename
+        final_name = f"redacted_{base_name}_£{total:.2f}.pdf"
+        if os.path.exists(redacted_path):
+            os.rename(redacted_path, final_name)
+            redacted_path = final_name
 
-                    is_barclaycard = (
-                        provider == 'barclaycard' or
-                        'barclaycard' in filename_lower or
-                        'barclay' in filename_lower
-                    )
+        return redacted_path, total, kept_count
+    finally:
+        if os.path.exists(tmp_in):
+            os.remove(tmp_in)
 
-                    if is_barclaycard:
-                        # Use the new precise Barclaycard redaction script
-                        redacted_file_path, total_remaining, kept = redact_barclaycard(
-                            input_path, output_filename, keywords
-                        )
-                        # Rename output file to include total
-                        total_filename = f"redacted_{base_name}_£{total_remaining:.2f}.pdf"
-                        if os.path.exists(redacted_file_path):
-                            os.rename(redacted_file_path, total_filename)
-                            redacted_file_path = total_filename
-                        kept_count = len(kept)
-                        message = f'''
-                        <strong>✅ Barclaycard statement redacted</strong><br>
-                        Kept {kept_count} transaction{"s" if kept_count != 1 else ""} totalling
-                        <strong>£{total_remaining:.2f}</strong><br>
-                        <a href="/download/{redacted_file_path}" class="text-indigo-600 hover:text-indigo-800 font-medium">
-                            ⬇ Download Redacted PDF
-                        </a>
-                        '''
-                    elif enhanced_privacy:
-                        if provider == 'auto':
-                            redacted_file_path, total_remaining = redact_amex_with_privacy(
-                                input_path, keywords, output_filename, redact_financial=True
-                            )
-                        else:
-                            redacted_file_path, total_remaining = redact_amex_with_privacy(
-                                input_path, keywords, output_filename, redact_financial=True
-                            )
-                        message = f'''
-                        Total of remaining transactions: £{total_remaining:.2f}
-                        <br><span class='text-sm text-green-600'>✓ Enhanced Financial Privacy applied</span><br>
-                        <a href="/download/{redacted_file_path}" class="text-indigo-600 hover:text-indigo-800">Download Redacted PDF</a>
-                        '''
-                    else:
-                        redacted_file_path, total_remaining = redact_pdf_generic(input_path, keywords, output_filename, provider)
-                        message = f'''
-                        Total of remaining transactions: £{total_remaining:.2f}<br>
-                        <a href="/download/{redacted_file_path}" class="text-indigo-600 hover:text-indigo-800">Download Redacted PDF</a>
-                        '''
-                except Exception as e:
-                    logger.error(f"An error occurred: {str(e)}", exc_info=True)
-                    message = f"An error occurred: {str(e)}"
-                    error = True
-                finally:
-                    # Clean up temporary files
-                    if os.path.exists(input_path):
-                        os.remove(input_path)
 
-    return render_template_string(HTML_TEMPLATE, message=message, error=error, usage_count=usage_count, providers=providers)
+@app.route('/', methods=['GET'])
+def index():
+    usage_count = update_usage_counter()
+    providers   = get_all_providers()
+    return render_template_string(HTML_TEMPLATE, usage_count=usage_count, providers=providers)
+
+
+@app.route('/redact', methods=['POST'])
+def redact_endpoint():
+    """Process a single PDF and return JSON with download URL."""
+    update_usage_counter()
+
+    if 'pdf' not in request.files:
+        return jsonify({'error': 'No file uploaded'}), 400
+
+    file     = request.files['pdf']
+    keywords = [k.strip() for k in request.form.get('keywords', '').split(',') if k.strip()]
+    provider = request.form.get('provider', 'auto')
+    enhanced = request.form.get('enhanced_privacy') == 'on'
+
+    if not file.filename:
+        return jsonify({'error': 'Empty filename'}), 400
+    if not keywords:
+        return jsonify({'error': 'No keywords provided'}), 400
+
+    try:
+        redacted_path, total, kept_count = process_single_file(file, keywords, provider, enhanced)
+        display_name = os.path.basename(redacted_path)
+        return jsonify({
+            'filename':     display_name,
+            'download_url': f'/download/{redacted_path}',
+            'total':        total,
+            'kept_count':   kept_count,
+        })
+    except Exception as e:
+        logger.error(f"Redact error: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/download/<path:filename>')
 def download_file(filename):
