@@ -228,7 +228,9 @@ def redact_financial_summary(doc):
         "Simple standard rate p.a",
         "Simple cash rate p.a",
         "Transactions, interest and charges",
-        "Number ",          # card number line
+        "Interest and charges",       # section header with total
+        "Monthly Membership Fee",     # always redact this charge
+        "Number ",                    # card number line
     ]
     # Standalone value patterns to always redact on financial pages
     REDACT_VALUE_RE = re.compile(
@@ -276,13 +278,22 @@ def redact_financial_summary(doc):
                 page.add_redact_annot(rect, fill=(0, 0, 0))
                 continue
 
-            # On page 2: redact ALL £ amounts in the summary header area
-            # (both columns, y < section_start ~185) — covers Direct Debit payment,
-            # "How you've used your card" subtotal, new balance, minimum payment, etc.
-            if page_num == 1 and bbox[1] < 200:
+            # On page 2 LEFT column only: redact summary amounts above transactions
+            # (Direct Debit payment line, "Transactions total" subtotals)
+            # Use x<300 to avoid touching right-column transaction amounts (24 Aug, 25 Aug TFL etc.)
+            if page_num == 1 and bbox[1] < 200 and bbox[0] < 300:
                 if REDACT_VALUE_RE.match(t) and t.startswith('£'):
                     page.add_redact_annot(rect, fill=(0, 0, 0))
                     continue
+
+            # Redact "Interest and charges" header row + Monthly Membership Fee row
+            if 'Interest and charges' in t or 'Monthly Membership Fee' in t:
+                # Redact entire row width (covers date + label + amount regardless of column)
+                x_min = 48 if bbox[0] < 300 else 325
+                x_max = 295 if bbox[0] < 300 else 570
+                row_rect = fitz.Rect(x_min, bbox[1] - 2, x_max, bbox[3] + 2)
+                page.add_redact_annot(row_rect, fill=(0, 0, 0))
+                continue
 
         page.apply_redactions()
 
