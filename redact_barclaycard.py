@@ -38,7 +38,7 @@ COLUMNS = [
 DATE_PATTERN        = re.compile(r'^\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)$')
 # Some PyMuPDF versions merge date + merchant into one span e.g. "24 Aug Tfl Travel CH..."
 DATE_PREFIX_PATTERN = re.compile(r'^(\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec))\s+(.+)$')
-AMOUNT_PATTERN      = re.compile(r'^£\d{1,3}(,\d{3})*\.\d{2}$')
+AMOUNT_PATTERN      = re.compile(r'^£\d{1,3}(,\d{3})*\.\d{2}(CR)?$')
 
 # Section header that starts the transactions we care about
 SECTION_START_TEXTS = ["How you've used your card", "How you\u2019ve used your card"]
@@ -218,7 +218,7 @@ def group_transactions(page):
                         break
 
                 merchant_text = " ".join(s["text"] for s in merch_spans).strip()
-                amount_val    = float(amount_span["text"].replace("£","").replace(",","")) if amount_span else None
+                amount_val    = float(amount_span["text"].replace("£","").replace(",","").replace("CR","")) if amount_span else None
 
                 transactions.append({
                     "date":            date_span["text"],
@@ -356,11 +356,13 @@ def redact_barclaycard(input_path, output_path, keep_keywords):
             is_kept  = any(kw.lower() in merchant.lower() for kw in keep_keywords)
 
             if is_kept:
-                logger.info(f"  KEEP  {tx['date']} | {merchant} | £{tx['amount']:.2f}")
-                if tx["amount"]:
+                amt_str = f"£{tx['amount']:.2f}" if tx['amount'] is not None else "£?.??"
+                logger.info(f"  KEEP  {tx['date']} | {merchant} | {amt_str}")
+                if tx["amount"] is not None:
                     kept.append(tx["amount"])
             else:
-                logger.info(f"  REDACT {tx['date']} | {merchant} | £{tx['amount']:.2f}")
+                amt_str = f"£{tx['amount']:.2f}" if tx['amount'] is not None else "£?.??"
+                logger.info(f"  REDACT {tx['date']} | {merchant} | {amt_str}")
                 # Redact the entire row as one full-width black bar
                 all_bboxes = ([tx["date_bbox"]] +
                               tx["merchant_bboxes"] +
