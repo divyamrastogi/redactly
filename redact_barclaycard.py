@@ -290,12 +290,17 @@ def redact_financial_summary(doc):
         # Sort by y then x
         spans.sort(key=lambda s: (round(s["bbox"][1]/4)*4, s["bbox"][0]))
 
-        # Mark which y-rows contain a redactable label
-        redact_y_rows = set()
+        # Mark which y-rows contain a redactable label, AND which column (x) the label is in.
+        # Key: (y_key, col_side) where col_side = 'left' (x<300) or 'right' (x>=300)
+        # This prevents cross-column collateral: e.g. "Minimum payment" (right col) at the
+        # same y as a TFL transaction (left col) must NOT redact the TFL amount.
+        redact_y_col = {}  # y_key -> set of col_sides ('left', 'right')
         for s in spans:
             t = s["text"].strip()
             if any(lbl.lower() in t.lower() for lbl in REDACT_LABELS):
-                redact_y_rows.add(round(s["bbox"][1] / 4) * 4)
+                y_key = round(s["bbox"][1] / 4) * 4
+                col_side = 'right' if s["bbox"][0] >= 300 else 'left'
+                redact_y_col.setdefault(y_key, set()).add(col_side)
 
         for s in spans:
             t    = s["text"].strip()
@@ -309,10 +314,12 @@ def redact_financial_summary(doc):
                 page.add_redact_annot(rect, fill=(0, 0, 0))
                 continue
 
-            # Redact values on labelled rows (amounts, rates)
-            if y_key in redact_y_rows and REDACT_VALUE_RE.match(t):
-                page.add_redact_annot(rect, fill=(0, 0, 0))
-                continue
+            # Redact values on labelled rows (amounts, rates) — same column only
+            if y_key in redact_y_col and REDACT_VALUE_RE.match(t):
+                span_col = 'right' if bbox[0] >= 300 else 'left'
+                if span_col in redact_y_col[y_key]:
+                    page.add_redact_annot(rect, fill=(0, 0, 0))
+                    continue
 
             # On page 2 LEFT column only: redact summary amounts ABOVE transaction section
             # (Direct Debit payment line, "Transactions total" subtotals)
