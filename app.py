@@ -1,11 +1,13 @@
-from flask import Flask, request, send_file, after_this_request, render_template_string, jsonify
+from flask import Flask, request, send_file, after_this_request, render_template_string, jsonify, abort
 import os
+import re
 import logging
+from datetime import datetime, timezone
 from redact_transactions import redact_transactions
 from redact_generic import redact_pdf_generic
 from redact_financial_details import redact_barclaycard_with_privacy, redact_amex_with_privacy
 from redact_barclaycard import redact_barclaycard
-from provider_config import get_all_providers
+from provider_config import get_all_providers, detect_provider
 
 app = Flask(__name__)
 
@@ -31,6 +33,23 @@ def update_usage_counter():
     except Exception as e:
         logger.error(f"Error updating usage counter: {str(e)}")
         return None
+
+
+def _iso_now():
+    """ISO-8601 UTC timestamp for demand-signal log lines."""
+    return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
+def log_unrecognized_upload():
+    """Record that auto-detection could not identify a provider.
+
+    Privacy: never log document content — only an ISO date + the literal 'unknown'.
+    """
+    try:
+        with open('unrecognized_uploads.txt', 'a') as f:
+            f.write(f"{_iso_now()},unknown\n")
+    except Exception as e:
+        logger.error(f"Error writing unrecognized_uploads.txt: {str(e)}")
 
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
@@ -699,6 +718,68 @@ HTML_TEMPLATE = '''
             gap: 6px;
         }
 
+        /* ── Bank-request banner (auto-detection missed) ── */
+        .bank-request-banner {
+            margin-top: 12px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--accent);
+            border-radius: var(--radius);
+            padding: 14px 16px;
+            animation: slide-in 0.2s ease-out;
+        }
+        .bank-request-banner p {
+            font-size: 13px;
+            color: var(--text);
+            margin-bottom: 10px;
+            letter-spacing: -0.01em;
+        }
+        .bank-request-row {
+            display: flex;
+            gap: 8px;
+        }
+        .bank-request-row input {
+            flex: 1;
+            min-width: 0;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text);
+            font-family: inherit;
+            font-size: 13.5px;
+            padding: 9px 13px;
+            outline: none;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .bank-request-row input:focus {
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+        .bank-request-row input::placeholder { color: var(--text-faint); }
+        .bank-request-row button {
+            padding: 9px 16px;
+            background: var(--accent);
+            color: white;
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+            border: none;
+            border-radius: var(--radius);
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.15s, transform 0.1s;
+        }
+        .bank-request-row button:hover { background: var(--accent-hover); }
+        .bank-request-row button:active { transform: scale(0.98); }
+        .bank-request-row button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .bank-request-done {
+            font-size: 12px;
+            color: var(--success);
+            margin-top: 8px;
+            margin-bottom: 0;
+        }
+
         .result-card {
             display: flex;
             align-items: center;
@@ -1131,14 +1212,21 @@ async function processFiles() {
             const data = await res.json();
 
             if (data.error) {
+                gtag('event', 'redact_error');
                 updateCard(card, 'error', file.name, null, data.error);
             } else {
+                gtag('event', 'redact_success', {
+                    provider: data.provider,
+                    detected: data.provider_detected
+                });
                 const detail = data.kept_count >= 0
                     ? `${data.kept_count} transaction${data.kept_count !== 1 ? 's' : ''} · £${data.total.toFixed(2)}`
                     : `£${data.total.toFixed(2)} total`;
                 updateCard(card, 'success', data.filename, data.download_url, detail);
+                if (data.provider_detected === false) showBankRequestBanner();
             }
         } catch (err) {
+            gtag('event', 'redact_error');
             updateCard(card, 'error', file.name, null, err.message);
         }
         done++;
@@ -1148,6 +1236,51 @@ async function processFiles() {
     btn.disabled = false;
     spinner.classList.remove('visible');
     btnText.textContent = 'Redact PDFs';
+}
+
+function showBankRequestBanner() {
+    const section = document.getElementById('results-section');
+    if (!section || document.getElementById('bank-request-banner')) return;
+
+    const banner = document.createElement('div');
+    banner.className = 'bank-request-banner';
+    banner.id = 'bank-request-banner';
+    banner.innerHTML = `
+        <p>We couldn't confidently detect your bank. Which bank is this statement from?</p>
+        <div class="bank-request-row">
+            <input id="bank-request-input" type="text" placeholder="e.g. Monzo, HSBC, NatWest" maxlength="60">
+            <button id="bank-request-btn" type="button">Submit</button>
+        </div>
+        <p class="bank-request-done" id="bank-request-done" style="display:none">Thanks — that helps us add support.</p>`;
+    section.appendChild(banner);
+
+    const input = document.getElementById('bank-request-input');
+    const btn   = document.getElementById('bank-request-btn');
+    const done  = document.getElementById('bank-request-done');
+
+    async function submit() {
+        const bank = input.value.trim();
+        if (!bank) { input.focus(); return; }
+        btn.disabled = true;
+        btn.textContent = '…';
+        try {
+            await fetch('/bank-request', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bank })
+            });
+            gtag('event', 'bank_request', { bank });
+            done.style.display = 'block';
+            btn.textContent = 'Submitted';
+            input.disabled = true;
+        } catch (e) {
+            btn.disabled = false;
+            btn.textContent = 'Submit';
+        }
+    }
+
+    btn.addEventListener('click', submit);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
 }
 
 function addPendingCard(filename) {
@@ -1217,7 +1350,12 @@ function shakeField(id) {
 '''
 
 def process_single_file(file, keywords, provider, enhanced_privacy):
-    """Process one uploaded PDF. Returns (redacted_path, total, kept_count)."""
+    """Process one uploaded PDF.
+
+    Returns (redacted_path, total, kept_count, provider_detected, provider_name)
+    where provider_detected is True if the provider was identified by content or
+    chosen manually, and provider_name is the slug reported back to the frontend.
+    """
     import uuid, fitz as _fitz
 
     tmp_in = f"tmp_in_{uuid.uuid4().hex}.pdf"
@@ -1226,17 +1364,36 @@ def process_single_file(file, keywords, provider, enhanced_privacy):
         base_name = os.path.splitext(file.filename)[0]
         tmp_out   = f"tmp_out_{uuid.uuid4().hex}.pdf"
 
-        # Auto-detect provider from PDF content
         filename_lower = file.filename.lower()
+        provider_detected = True
+        report_provider = provider
+
+        # Auto-detect provider from PDF content when none was chosen
         if provider == 'auto':
+            detected = None
             try:
                 _doc  = _fitz.open(tmp_in)
-                _text = _doc[0].get_text().lower() if len(_doc) > 0 else ''
+                _text = _doc[0].get_text() if len(_doc) > 0 else ''
                 _doc.close()
-                if 'barclaycard' in _text or 'barclays' in _text or 'mastercard avios' in _text:
-                    provider = 'barclaycard'
+                detected = detect_provider(_text)
+                # Preserve legacy text signal: Barclaycard Avios statements are
+                # routed to the barclaycard path even without the brand word.
+                if detected is None and 'mastercard avios' in _text.lower():
+                    detected = 'barclaycard'
             except Exception:
-                pass
+                detected = None
+
+            if detected is not None:
+                provider = detected
+                report_provider = detected
+                provider_detected = True
+            else:
+                # Unknown provider: record a demand signal (NO document content),
+                # then fall back to the existing AMEX processing path.
+                log_unrecognized_upload()
+                provider = 'amex_uk'        # explicit AMEX fallback for processing
+                report_provider = 'unknown'  # honest report to the frontend
+                provider_detected = False
 
         is_barclaycard = (
             provider == 'barclaycard' or
@@ -1260,7 +1417,7 @@ def process_single_file(file, keywords, provider, enhanced_privacy):
             os.rename(redacted_path, final_name)
             redacted_path = final_name
 
-        return redacted_path, total, kept_count
+        return redacted_path, total, kept_count, provider_detected, report_provider
     finally:
         if os.path.exists(tmp_in):
             os.remove(tmp_in)
@@ -1292,13 +1449,17 @@ def redact_endpoint():
         return jsonify({'error': 'No keywords provided'}), 400
 
     try:
-        redacted_path, total, kept_count = process_single_file(file, keywords, provider, enhanced)
+        redacted_path, total, kept_count, provider_detected, detected_provider = process_single_file(
+            file, keywords, provider, enhanced
+        )
         display_name = os.path.basename(redacted_path)
         return jsonify({
-            'filename':     display_name,
-            'download_url': f'/download/{redacted_path}',
-            'total':        total,
-            'kept_count':   kept_count,
+            'filename':         display_name,
+            'download_url':     f'/download/{redacted_path}',
+            'total':            total,
+            'kept_count':       kept_count,
+            'provider_detected': provider_detected,
+            'provider':         detected_provider,
         })
     except Exception as e:
         logger.error(f"Redact error: {e}", exc_info=True)
@@ -1316,6 +1477,64 @@ def download_file(filename):
         return response
 
     return send_file(filename, as_attachment=True)
+
+
+@app.route('/bank-request', methods=['POST'])
+def bank_request():
+    """Capture a user-typed bank name when auto-detection fails.
+
+    Privacy: store only a sanitized bank name + ISO date — never statement content.
+    """
+    data = request.get_json(silent=True) or {}
+    raw = str(data.get('bank') or '').strip()
+    # Sanitize: alphanumeric + spaces only, capped at 60 chars
+    clean = re.sub(r'[^A-Za-z0-9 ]', '', raw)[:60].strip()
+    if not clean:
+        return jsonify({'error': 'empty bank name'}), 400
+    try:
+        with open('bank_requests.txt', 'a') as f:
+            f.write(f"{_iso_now()},{clean}\n")
+    except Exception as e:
+        logger.error(f"Error writing bank_requests.txt: {str(e)}")
+        return jsonify({'error': 'storage failure'}), 500
+    return jsonify({'ok': True})
+
+
+@app.route('/stats', methods=['GET'])
+def stats():
+    """Token-gated demand-signal stats. 404 unless STATS_TOKEN env matches."""
+    import hmac
+    expected = os.environ.get('STATS_TOKEN')
+    if not expected or not hmac.compare_digest(request.args.get('token', ''), expected):
+        abort(404)
+
+    # Usage counter value
+    try:
+        with open('usage_counter.txt') as f:
+            usage_count = int((f.read() or '0').strip())
+    except Exception:
+        usage_count = 0
+
+    # Unrecognized-upload line count
+    try:
+        with open('unrecognized_uploads.txt') as f:
+            unrecognized_uploads = sum(1 for line in f if line.strip())
+    except Exception:
+        unrecognized_uploads = 0
+
+    # Tail-20 of bank requests
+    try:
+        with open('bank_requests.txt') as f:
+            bank_requests = [line.strip() for line in f if line.strip()][-20:]
+    except Exception:
+        bank_requests = []
+
+    return jsonify({
+        'usage_count': usage_count,
+        'unrecognized_uploads': unrecognized_uploads,
+        'bank_requests_tail': bank_requests,
+    })
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)

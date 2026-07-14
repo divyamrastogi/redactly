@@ -74,20 +74,24 @@ def get_provider_config(provider_name: str) -> ProviderConfig:
     return PROVIDER_CONFIGS.get(provider_name, PROVIDER_CONFIGS['amex_uk'])
 
 
-def detect_provider(pdf_text: str) -> str:
-    """Auto-detect credit card provider from PDF text."""
+def detect_provider(pdf_text: str) -> Optional[str]:
+    """Auto-detect credit card provider from PDF text.
+
+    Returns the provider slug ('amex_uk' / 'barclaycard') when a marker matches,
+    or None when no provider can be identified. Callers decide the fallback.
+    """
     text_lower = pdf_text.lower()
-    
+
     # AMEX detection
     if 'american express' in text_lower or 'amex' in text_lower:
         return 'amex_uk'
-    
+
     # Barclaycard detection
     if 'barclaycard' in text_lower or 'barclays' in text_lower:
         return 'barclaycard'
-    
-    # Default to AMEX
-    return 'amex_uk'
+
+    # Unknown: callers (process_single_file / redact_pdf_generic) fall back to AMEX
+    return None
 
 
 def get_all_providers() -> List[Tuple[str, str]]:
