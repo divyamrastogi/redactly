@@ -496,6 +496,84 @@ _SITE_OPEN = '''<!DOCTYPE html>
             color: var(--accent);
         }
 
+        /* ── Mode selector (radio cards) ── */
+        .mode-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .mode-card {
+            position: relative;
+            display: block;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 11px 14px;
+            cursor: pointer;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        .mode-card input[type="radio"] {
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .mode-card:hover {
+            border-color: var(--border-focus);
+        }
+
+        .mode-card.checked {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        .mode-title {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text);
+            letter-spacing: -0.01em;
+        }
+
+        .mode-card.checked .mode-title {
+            color: var(--accent);
+        }
+
+        .mode-desc {
+            display: block;
+            font-size: 11.5px;
+            font-weight: 400;
+            color: var(--text-faint);
+            margin-top: 2px;
+            line-height: 1.45;
+        }
+
+        .mode-explainer {
+            display: none;
+            align-items: flex-start;
+            gap: 10px;
+            background: rgba(139,92,246,0.06);
+            border: 1px solid rgba(139,92,246,0.2);
+            border-radius: var(--radius);
+            padding: 11px 14px;
+            font-size: 12.5px;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        .mode-explainer.visible { display: flex; }
+
+        .mode-explainer svg {
+            width: 15px;
+            height: 15px;
+            flex-shrink: 0;
+            margin-top: 1px;
+            color: var(--accent);
+        }
+
         /* ── Drop zone ── */
         .drop-zone {
             position: relative;
@@ -1173,10 +1251,10 @@ _HOMEPAGE_BODY = '''
                 <!-- How it works -->
                 <div class="card how-card">
                     <h2>How it works</h2>
-                    <p>Upload one or more credit card statement PDFs, enter keywords for the transactions you want to keep, and download redacted files as they finish.</p>
+                    <p>Upload one or more statement PDFs, choose what should stay visible, and download redacted files as they finish.</p>
                     <ul class="how-list">
                         <li>Multi-file upload — process several months at once</li>
-                        <li>Auto-detects AMEX and Barclaycard formats</li>
+                        <li>Auto-detects AMEX, Barclaycard, and UK bank statement formats</li>
                         <li>Each file is ready to download as soon as it's done</li>
                         <li>Filename shows the whitelisted total for easy reference</li>
                     </ul>
@@ -1224,6 +1302,35 @@ _HOMEPAGE_BODY = '''
                                 <input id="pdf-input" type="file" accept=".pdf" multiple style="display:none">
                             </div>
                             <ul id="file-list" class="file-list"></ul>
+                        </div>
+
+                        <!-- Mode selector -->
+                        <div class="field">
+                            <label>What do you need this for?</label>
+                            <div class="mode-group" id="mode-group">
+                                <label class="mode-card checked" data-mode="custom">
+                                    <input type="radio" name="mode" value="custom" checked>
+                                    <span class="mode-title">Expense claim</span>
+                                    <span class="mode-desc">Keep only transactions matching your keywords.</span>
+                                </label>
+                                <label class="mode-card" data-mode="landlord">
+                                    <input type="radio" name="mode" value="landlord">
+                                    <span class="mode-title">Landlord / rental</span>
+                                    <span class="mode-desc">Keep income, balances, and rent. Hide other spending.</span>
+                                </label>
+                                <label class="mode-card" data-mode="custom">
+                                    <input type="radio" name="mode" value="custom">
+                                    <span class="mode-title">Custom</span>
+                                    <span class="mode-desc">Keep only the transactions you specify.</span>
+                                </label>
+                            </div>
+                            <div id="landlord-explainer" class="mode-explainer">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                                </svg>
+                                <span><strong>Keeps:</strong> money coming in (salary, transfers), your balances, and any transactions you whitelist (e.g. rent). <strong>Hides:</strong> all other spending.</span>
+                            </div>
+                            <span class="hint">Landlord mode is for bank statements — not credit cards</span>
                         </div>
 
                         <!-- Keywords -->
@@ -1344,20 +1451,50 @@ function toggleTheme() {
 _HOMEPAGE_SCRIPT = '''
 <script>
 // --- Provider UI ---
+function getSelectedMode() {
+    const checked = document.querySelector('#mode-group input[name="mode"]:checked');
+    return checked ? checked.value : 'custom';
+}
+
+function refreshKeywordPlaceholder() {
+    const kw = document.getElementById('keywords');
+    if (getSelectedMode() === 'landlord') {
+        kw.placeholder = 'rent, letting agent (optional)';
+        return;
+    }
+    const provider = document.getElementById('provider').value;
+    kw.placeholder = (provider === 'barclaycard')
+        ? 'e.g. Tfl Travel, Hyperoptic, Your-Saving'
+        : 'e.g. Office Supplies, Travel, Client Dinner';
+}
+
 function updateProviderUI() {
     const provider = document.getElementById('provider').value;
     const tip = document.getElementById('barclaycard-tip');
-    const kw  = document.getElementById('keywords');
-    if (provider === 'barclaycard') {
-        tip.classList.add('visible');
-        kw.placeholder = 'e.g. Tfl Travel, Hyperoptic, Your-Saving';
-    } else {
-        tip.classList.remove('visible');
-        kw.placeholder = 'e.g. Office Supplies, Travel, Client Dinner';
-    }
+    tip.classList.toggle('visible', provider === 'barclaycard');
+    refreshKeywordPlaceholder();
 }
+
+function applyModeUI() {
+    const mode = getSelectedMode();
+    document.querySelectorAll('#mode-group .mode-card').forEach(card => {
+        card.classList.toggle('checked', card.querySelector('input').checked);
+    });
+    document.getElementById('landlord-explainer').classList.toggle('visible', mode === 'landlord');
+    refreshKeywordPlaceholder();
+}
+
 document.getElementById('provider').addEventListener('change', updateProviderUI);
-document.addEventListener('DOMContentLoaded', updateProviderUI);
+document.querySelectorAll('#mode-group .mode-card input').forEach(input => {
+    input.addEventListener('change', () => {
+        applyModeUI();
+        gtag('event', 'mode_selected', { mode: getSelectedMode() });
+    });
+});
+document.addEventListener('DOMContentLoaded', () => {
+    updateProviderUI();
+    applyModeUI();
+});
 
 // --- File picker ---
 const pdfInput = document.getElementById('pdf-input');
@@ -1410,9 +1547,12 @@ async function processFiles() {
     const keywords = document.getElementById('keywords').value.trim();
     const provider = document.getElementById('provider').value;
     const privacy  = document.getElementById('enhanced_privacy').checked;
+    const mode     = getSelectedMode();
 
     if (!files.length)  { shakeField('drop-zone'); return; }
-    if (!keywords)      { shakeField('keywords'); return; }
+    // Keywords are required unless landlord mode is selected (income/balances
+    // are kept automatically; keywords are optional there).
+    if (mode !== 'landlord' && !keywords) { shakeField('keywords'); return; }
 
     const btn     = document.getElementById('submit-btn');
     const btnText = document.getElementById('btn-text');
@@ -1434,6 +1574,7 @@ async function processFiles() {
             fd.append('pdf', file);
             fd.append('keywords', keywords);
             fd.append('provider', provider);
+            fd.append('mode', mode);
             if (privacy) fd.append('enhanced_privacy', 'on');
 
             const res  = await fetch('/redact', { method: 'POST', body: fd });
@@ -1595,13 +1736,27 @@ _SITE_END = '''
 # Homepage template = shared shell + homepage-only body and scripts.
 HTML_TEMPLATE = _SITE_OPEN + _HOMEPAGE_BODY + _SITE_MID + _HOMEPAGE_SCRIPT + _SITE_END
 
-def process_single_file(file, keywords, provider, enhanced_privacy):
+class LandlordCardError(ValueError):
+    """Landlord mode was requested for a credit-card statement.
+
+    Landlord mode (keep income + balances, hide other spending) only makes sense
+    for bank statements; card statements have no income/balance semantics worth
+    keeping, so the /redact endpoint turns this into a friendly 400.
+    """
+
+
+def process_single_file(file, keywords, provider, enhanced_privacy, mode='custom', keep_credits=False):
     """Process one uploaded PDF.
 
     Returns (redacted_path, total, kept_count, provider_detected, provider_name, beta)
     where provider_detected is True if the provider was identified by content or
     chosen manually, provider_name is the slug reported back to the frontend, and
     beta is True when the generic bank parser (beta) handled this file.
+
+    ``mode`` is 'custom' (default, current behaviour) or 'landlord' (keep credits
+    + optional keyword whitelist). ``keep_credits`` is forwarded to the bank /
+    barclaycard parsers. Raises ``LandlordCardError`` if landlord mode targets a
+    credit-card statement (amex_uk / barclaycard) — the caller returns a 400.
     """
     import uuid, fitz as _fitz
 
@@ -1650,13 +1805,27 @@ def process_single_file(file, keywords, provider, enhanced_privacy):
             'barclay' in filename_lower
         )
 
+        # Landlord mode is for bank statements only. Once the provider is resolved
+        # (detected from content or chosen manually), reject credit-card statements
+        # with a friendly 400 — but only when we actually identified the provider
+        # (an undetected statement falls back to the AMEX path and must not be
+        # rejected as a guess).
+        if (mode == 'landlord' and provider_detected
+                and provider in ('amex_uk', 'barclaycard')):
+            raise LandlordCardError(
+                'Landlord mode is for bank statements. For card statements, '
+                'use Expense mode with keywords.'
+            )
+
         if is_generic_bank:
             # Generic UK bank statement parser (BETA) — layout-driven.
-            redacted_path, total, kept = redact_bank_generic(tmp_in, tmp_out, keywords)
+            redacted_path, total, kept = redact_bank_generic(
+                tmp_in, tmp_out, keywords, keep_credits=keep_credits)
             kept_count = len(kept)
             beta = True
         elif is_barclaycard:
-            redacted_path, total, kept = redact_barclaycard(tmp_in, tmp_out, keywords)
+            redacted_path, total, kept = redact_barclaycard(
+                tmp_in, tmp_out, keywords, keep_credits=keep_credits)
             kept_count   = len(kept)
         elif enhanced_privacy:
             redacted_path, total = redact_amex_with_privacy(tmp_in, keywords, tmp_out, redact_financial=True)
@@ -1705,6 +1874,26 @@ def guide_page(slug):
         meta_description=guide['meta_description'])
 
 
+@app.route('/guides')
+def guides_index():
+    """Index of all guides — target of the footer link, aids internal linking."""
+    from guides import GUIDES
+    items = ''.join(
+        f'<li style="margin-bottom:14px"><a href="/guides/{slug}">{g["title"]}</a>'
+        f'<br><span style="color:var(--text-muted)">{g["meta_description"]}</span></li>'
+        for slug, g in GUIDES.items()
+    )
+    body = (
+        '<article class="guide"><h1>Guides</h1>'
+        '<p>Practical, honest guides to sharing financial documents without oversharing.</p>'
+        f'<ul style="list-style:none;padding:0;margin-top:24px">{items}</ul></article>'
+    )
+    template = _SITE_OPEN + body + _SITE_MID + _SITE_END
+    return render_template_string(template,
+        title='Guides — Redact Statements',
+        meta_description='Guides to redacting bank and card statements for rental applications and expense claims.')
+
+
 def _base_url():
     """Canonical site root for absolute URLs (sitemap/robots). Env-configurable."""
     return os.environ.get('BASE_URL', 'https://pdf-redact.onrender.com').rstrip('/')
@@ -1745,15 +1934,20 @@ def redact_endpoint():
     keywords = [k.strip() for k in request.form.get('keywords', '').split(',') if k.strip()]
     provider = request.form.get('provider', 'auto')
     enhanced = request.form.get('enhanced_privacy') == 'on'
+    mode     = request.form.get('mode', 'custom')
+    is_landlord = (mode == 'landlord')
 
     if not file.filename:
         return jsonify({'error': 'Empty filename'}), 400
-    if not keywords:
+    # Keywords are required in custom/expense mode. In landlord mode they are
+    # optional (the user may keep only income + balances).
+    if not is_landlord and not keywords:
         return jsonify({'error': 'No keywords provided'}), 400
 
     try:
         redacted_path, total, kept_count, provider_detected, detected_provider, beta = process_single_file(
-            file, keywords, provider, enhanced
+            file, keywords, provider, enhanced,
+            mode=mode, keep_credits=is_landlord
         )
         display_name = os.path.basename(redacted_path)
         return jsonify({
@@ -1765,6 +1959,9 @@ def redact_endpoint():
             'provider':         detected_provider,
             'beta':             bool(beta),
         })
+    except LandlordCardError as e:
+        # Friendly 400: landlord mode doesn't apply to credit-card statements.
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
         logger.error(f"Redact error: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500

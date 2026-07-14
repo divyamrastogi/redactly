@@ -207,6 +207,31 @@ def _row_amount(cells):
     return 0.0
 
 
+def _amount_cells(cells):
+    """All paid-in / paid-out cells whose text is a recognised amount."""
+    return [c for c in cells
+            if c["role"] in ("paid_in", "paid_out") and _is_amount(c["text"])]
+
+
+def _is_credit(cells, columns):
+    """Is this transaction row a credit (money in)?
+
+    Two-column layout (both a Paid in and a Paid out header present): a credit is
+    any amount that lands in the Paid in column. Single amount column (or none):
+    a credit carries a CR suffix or a leading minus sign — mirroring the existing
+    CR handling in ``redact_barclaycard`` (commit 9408e1f).
+    """
+    has_paid_in = any(c["role"] == "paid_in" for c in columns)
+    has_paid_out = any(c["role"] == "paid_out" for c in columns)
+    if has_paid_in and has_paid_out:
+        return any(c["role"] == "paid_in" for c in _amount_cells(cells))
+    for c in _amount_cells(cells):
+        t = c["text"].strip()
+        if t.upper().endswith("CR") or t.startswith("-"):
+            return True
+    return False
+
+
 def _is_continuation(cells):
     """A non-dated row is a wrapped-description continuation of the row above if
     it has description text but no balance or amount cell (which would mark it as
@@ -218,7 +243,7 @@ def _is_continuation(cells):
 
 
 # ── Per-page redaction ──────────────────────────────────────────────────────
-def _redact_page(page, keep_keywords, kept_rows):
+def _redact_page(page, keep_keywords, kept_rows, keep_credits=False):
     spans = _collect_spans(page)
     columns, header_y = _detect_columns(spans, page.rect.width)
     if not columns:
@@ -237,7 +262,9 @@ def _redact_page(page, keep_keywords, kept_rows):
         date_cells = [c for c in cells if _is_date_cell(c, date_column_known)]
         if date_cells:
             description = " ".join(c["text"] for c in cells if c["role"] == "description").strip()
-            kept = any(kw.lower() in description.lower() for kw in keep_keywords) if keep_keywords else False
+            is_kw = any(kw.lower() in description.lower() for kw in keep_keywords) if keep_keywords else False
+            is_credit = _is_credit(cells, columns) if keep_credits else False
+            kept = is_kw or is_credit
             amount = _row_amount(cells)
             if kept:
                 current_redacted = False
@@ -263,14 +290,18 @@ def _redact_page(page, keep_keywords, kept_rows):
 
 
 # ── Public entry point ──────────────────────────────────────────────────────
-def redact_bank_generic(input_path, output_path, keep_keywords):
+def redact_bank_generic(input_path, output_path, keep_keywords, keep_credits=False):
     """Redact every transaction not matching ``keep_keywords`` from a generic UK
-    bank statement. Returns (output_path, total_of_kept_amounts, kept_rows)."""
+    bank statement. Returns (output_path, total_of_kept_amounts, kept_rows).
+
+    When ``keep_credits`` is True (landlord mode), credit rows (money in) are
+    always kept in addition to keyword matches — keywords may be empty.
+    """
     doc = fitz.open(input_path)
     kept_rows = []
 
     for page_num in range(len(doc)):
-        _redact_page(doc[page_num], keep_keywords, kept_rows)
+        _redact_page(doc[page_num], keep_keywords, kept_rows, keep_credits=keep_credits)
 
     total = sum(r.get("amount", 0.0) for r in kept_rows)
     doc.save(output_path)
