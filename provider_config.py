@@ -60,6 +60,26 @@ PROVIDER_CONFIGS = {
         transaction_structure='multi_line',
         special_markers=[],
         amount_position='end_of_line'
+    ),
+
+    # Generic UK bank statement (layout-driven parser in redact_bank_generic.py).
+    # BETA — real per-bank configs (Monzo, HSBC, NatWest…) are added later.
+    'generic_bank_uk': ProviderConfig(
+        name='generic_bank_uk',
+        display_name='Other UK bank (beta)',
+        date_patterns=[
+            (r'\b\d{1,2}\s+[A-Za-z]{3}\b', 'D MMM'),
+            (r'\b\d{1,2}/\d{1,2}/\d{4}\b', 'DD/MM/YYYY'),
+            (r'\b\d{1,2}/\d{1,2}/\d{2}\b', 'DD/MM/YY'),
+        ],
+        currency_patterns=[
+            r'£[\d,]+\.\d{2}',
+            r'[\d,]+\.\d{2}',
+        ],
+        section_headers=['Date', 'Description', 'Paid out', 'Paid in', 'Balance'],
+        transaction_structure='multi_line',
+        special_markers=['sort code', 'paid in', 'paid out', 'money in', 'money out'],
+        amount_position='end_of_line'
     )
 }
 
@@ -75,10 +95,16 @@ def get_provider_config(provider_name: str) -> ProviderConfig:
 
 
 def detect_provider(pdf_text: str) -> Optional[str]:
-    """Auto-detect credit card provider from PDF text.
+    """Auto-detect statement provider from PDF text.
 
-    Returns the provider slug ('amex_uk' / 'barclaycard') when a marker matches,
-    or None when no provider can be identified. Callers decide the fallback.
+    Returns the provider slug ('amex_uk' / 'barclaycard' / 'generic_bank_uk') when
+    a marker matches, or None when no provider can be identified. Callers decide
+    the fallback.
+
+    Order matters: card providers are checked first so a Barclaycard statement
+    that happens to contain "Paid in"/"Paid out" still resolves to barclaycard.
+    The generic UK-bank marker (sort code / paid in / paid out / money in / money
+    out) only matches when no card provider did.
     """
     text_lower = pdf_text.lower()
 
@@ -90,6 +116,10 @@ def detect_provider(pdf_text: str) -> Optional[str]:
     if 'barclaycard' in text_lower or 'barclays' in text_lower:
         return 'barclaycard'
 
+    # Generic UK bank statement (BETA) — matched only when no card provider did.
+    if re.search(r'\b(sort code|paid in|paid out|money in|money out)\b', text_lower):
+        return 'generic_bank_uk'
+
     # Unknown: callers (process_single_file / redact_pdf_generic) fall back to AMEX
     return None
 
@@ -99,6 +129,7 @@ def get_all_providers() -> List[Tuple[str, str]]:
     providers = [
         ('auto', 'Auto-detect'),
         ('amex_uk', 'American Express'),
-        ('barclaycard', 'Barclaycard')
+        ('barclaycard', 'Barclaycard'),
+        ('generic_bank_uk', 'Other UK bank (beta)'),
     ]
     return providers

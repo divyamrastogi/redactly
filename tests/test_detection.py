@@ -41,6 +41,27 @@ def test_unknown_returns_none(text):
     assert detect_provider(text) is None
 
 
+@pytest.mark.parametrize("text", [
+    "Sort Code 12-34-56",
+    "Statement showing Paid in and Paid out columns",
+    "Money in 500.00  Money out 200.00",
+])
+def test_detects_generic_bank(text):
+    # Generic UK-bank markers match only when no card provider did.
+    assert detect_provider(text) == 'generic_bank_uk'
+
+
+@pytest.mark.parametrize("text, expected", [
+    # A plain bank name with none of the markers is still unknown.
+    ("Monzo Bank", None),
+    # Card brand wins over generic markers when both are present.
+    ("Barclaycard statement with a Paid out column", 'barclaycard'),
+    ("American Express paid in", 'amex_uk'),
+])
+def test_card_brand_and_marker_precedence(text, expected):
+    assert detect_provider(text) == expected
+
+
 # --- PDF-backed tests (honour the project testing convention) ----------------
 
 def test_detect_amex_from_synthetic_pdf(tmp_path):

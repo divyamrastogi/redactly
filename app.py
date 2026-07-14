@@ -7,6 +7,7 @@ from redact_transactions import redact_transactions
 from redact_generic import redact_pdf_generic
 from redact_financial_details import redact_barclaycard_with_privacy, redact_amex_with_privacy
 from redact_barclaycard import redact_barclaycard
+from redact_bank_generic import redact_bank_generic
 from provider_config import get_all_providers, detect_provider
 
 app = Flask(__name__)
@@ -97,6 +98,8 @@ _SITE_OPEN = '''<!DOCTYPE html>
             --error:          #f87171;
             --error-bg:       rgba(248,113,113,0.08);
             --error-border:   rgba(248,113,113,0.2);
+            --warning:        #f59e0b;
+            --warning-border: rgba(245,158,11,0.28);
             --radius:         10px;
             --radius-lg:      14px;
             --shadow:         0 1px 3px rgba(0,0,0,0.4), 0 4px 16px rgba(0,0,0,0.3);
@@ -121,6 +124,8 @@ _SITE_OPEN = '''<!DOCTYPE html>
             --error:          #dc2626;
             --error-bg:       rgba(220,38,38,0.06);
             --error-border:   rgba(220,38,38,0.2);
+            --warning:        #d97706;
+            --warning-border: rgba(217,119,6,0.26);
             --shadow:         0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.05);
         }
 
@@ -144,6 +149,8 @@ _SITE_OPEN = '''<!DOCTYPE html>
                 --error:          #dc2626;
                 --error-bg:       rgba(220,38,38,0.06);
                 --error-border:   rgba(220,38,38,0.2);
+                --warning:        #d97706;
+                --warning-border: rgba(217,119,6,0.26);
                 --shadow:         0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.05);
             }
         }
@@ -784,6 +791,24 @@ _SITE_OPEN = '''<!DOCTYPE html>
             color: var(--success);
             margin-top: 8px;
             margin-bottom: 0;
+        }
+
+        /* ── Beta banner (generic bank-statement path) ── */
+        .beta-banner {
+            margin-top: 12px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--warning);
+            border-radius: var(--radius);
+            padding: 12px 16px;
+            animation: slide-in 0.2s ease-out;
+        }
+        .beta-banner p {
+            font-size: 13px;
+            color: var(--text);
+            margin: 0;
+            letter-spacing: -0.01em;
+            line-height: 1.45;
         }
 
         .result-card {
@@ -1427,6 +1452,7 @@ async function processFiles() {
                     : `£${data.total.toFixed(2)} total`;
                 updateCard(card, 'success', data.filename, data.download_url, detail);
                 if (data.provider_detected === false) showBankRequestBanner();
+                if (data.beta) showBetaBanner();
             }
         } catch (err) {
             gtag('event', 'redact_error');
@@ -1484,6 +1510,17 @@ function showBankRequestBanner() {
 
     btn.addEventListener('click', submit);
     input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+}
+
+function showBetaBanner() {
+    const section = document.getElementById('results-section');
+    if (!section || document.getElementById('beta-banner')) return;
+    gtag('event', 'bank_beta');
+    const banner = document.createElement('div');
+    banner.className = 'beta-banner';
+    banner.id = 'beta-banner';
+    banner.innerHTML = '<p>Bank statement support is in beta — please check every page of the output before sharing it.</p>';
+    section.appendChild(banner);
 }
 
 function addPendingCard(filename) {
@@ -1561,9 +1598,10 @@ HTML_TEMPLATE = _SITE_OPEN + _HOMEPAGE_BODY + _SITE_MID + _HOMEPAGE_SCRIPT + _SI
 def process_single_file(file, keywords, provider, enhanced_privacy):
     """Process one uploaded PDF.
 
-    Returns (redacted_path, total, kept_count, provider_detected, provider_name)
+    Returns (redacted_path, total, kept_count, provider_detected, provider_name, beta)
     where provider_detected is True if the provider was identified by content or
-    chosen manually, and provider_name is the slug reported back to the frontend.
+    chosen manually, provider_name is the slug reported back to the frontend, and
+    beta is True when the generic bank parser (beta) handled this file.
     """
     import uuid, fitz as _fitz
 
@@ -1576,6 +1614,7 @@ def process_single_file(file, keywords, provider, enhanced_privacy):
         filename_lower = file.filename.lower()
         provider_detected = True
         report_provider = provider
+        beta = False
 
         # Auto-detect provider from PDF content when none was chosen
         if provider == 'auto':
@@ -1604,13 +1643,19 @@ def process_single_file(file, keywords, provider, enhanced_privacy):
                 report_provider = 'unknown'  # honest report to the frontend
                 provider_detected = False
 
+        is_generic_bank = provider == 'generic_bank_uk'
         is_barclaycard = (
             provider == 'barclaycard' or
             'barclaycard' in filename_lower or
             'barclay' in filename_lower
         )
 
-        if is_barclaycard:
+        if is_generic_bank:
+            # Generic UK bank statement parser (BETA) — layout-driven.
+            redacted_path, total, kept = redact_bank_generic(tmp_in, tmp_out, keywords)
+            kept_count = len(kept)
+            beta = True
+        elif is_barclaycard:
             redacted_path, total, kept = redact_barclaycard(tmp_in, tmp_out, keywords)
             kept_count   = len(kept)
         elif enhanced_privacy:
@@ -1626,7 +1671,7 @@ def process_single_file(file, keywords, provider, enhanced_privacy):
             os.rename(redacted_path, final_name)
             redacted_path = final_name
 
-        return redacted_path, total, kept_count, provider_detected, report_provider
+        return redacted_path, total, kept_count, provider_detected, report_provider, beta
     finally:
         if os.path.exists(tmp_in):
             os.remove(tmp_in)
@@ -1707,7 +1752,7 @@ def redact_endpoint():
         return jsonify({'error': 'No keywords provided'}), 400
 
     try:
-        redacted_path, total, kept_count, provider_detected, detected_provider = process_single_file(
+        redacted_path, total, kept_count, provider_detected, detected_provider, beta = process_single_file(
             file, keywords, provider, enhanced
         )
         display_name = os.path.basename(redacted_path)
@@ -1718,6 +1763,7 @@ def redact_endpoint():
             'kept_count':       kept_count,
             'provider_detected': provider_detected,
             'provider':         detected_provider,
+            'beta':             bool(beta),
         })
     except Exception as e:
         logger.error(f"Redact error: {e}", exc_info=True)
