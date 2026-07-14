@@ -1,4 +1,4 @@
-from flask import Flask, request, send_file, after_this_request, render_template_string, jsonify, abort
+from flask import Flask, request, send_file, after_this_request, render_template_string, jsonify, abort, Response
 import os
 import re
 import logging
@@ -51,14 +51,20 @@ def log_unrecognized_upload():
     except Exception as e:
         logger.error(f"Error writing unrecognized_uploads.txt: {str(e)}")
 
-HTML_TEMPLATE = '''
-<!DOCTYPE html>
+# ─────────────────────────────────────────────────────────────────────────────
+# Reusable site shell. The homepage and every guide page are assembled from the
+# same segments (_SITE_OPEN … _SITE_END) so they share identical chrome — the
+# header, footer, theme-toggle script, and the full light/dark theme CSS.
+# Page-specific title/meta are injected via Jinja vars in _SITE_OPEN.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_SITE_OPEN = '''<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Redact — Credit Card Statement Privacy Tool</title>
-    <meta name="description" content="Redact your credit card statements privately. Supports AMEX, Barclaycard, Visa, Mastercard and more.">
+    <title>{{ title }}</title>
+    <meta name="description" content="{{ meta_description }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;550;600;700&display=swap" rel="stylesheet">
@@ -912,6 +918,164 @@ HTML_TEMPLATE = '''
             color: var(--text-faint);
         }
 
+        .site-footer a {
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: color 0.15s;
+        }
+
+        .site-footer a:hover {
+            color: var(--text);
+        }
+
+        /* ── Trust cards (homepage) ── */
+        .trust-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+
+        @media (max-width: 680px) {
+            .trust-grid { grid-template-columns: 1fr; }
+        }
+
+        .trust-card {
+            padding: 22px;
+        }
+
+        .trust-card .trust-icon {
+            width: 30px;
+            height: 30px;
+            border-radius: 8px;
+            background: var(--accent-glow);
+            border: 1px solid rgba(139,92,246,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 12px;
+        }
+
+        .trust-card .trust-icon svg {
+            width: 16px;
+            height: 16px;
+            color: var(--accent);
+        }
+
+        .trust-card h3 {
+            font-size: 13.5px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 8px;
+            letter-spacing: -0.01em;
+        }
+
+        .trust-card p {
+            font-size: 12.5px;
+            color: var(--text-muted);
+            line-height: 1.65;
+        }
+
+        /* ── Guide pages ── */
+        .guide {
+            max-width: 720px;
+            margin: 40px auto 56px;
+        }
+
+        .guide h1 {
+            font-size: clamp(24px, 4vw, 32px);
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            line-height: 1.2;
+            color: var(--text);
+            margin-bottom: 12px;
+        }
+
+        .guide .guide-lead {
+            font-size: 15px;
+            color: var(--text-muted);
+            margin-bottom: 28px;
+            line-height: 1.6;
+        }
+
+        .guide h2 {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text);
+            margin: 28px 0 10px;
+            letter-spacing: -0.01em;
+        }
+
+        .guide p {
+            font-size: 14.5px;
+            color: var(--text-muted);
+            line-height: 1.7;
+            margin-bottom: 14px;
+        }
+
+        .guide ul {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin: 0 0 16px;
+        }
+
+        .guide li {
+            font-size: 14px;
+            color: var(--text-muted);
+            padding-left: 18px;
+            position: relative;
+            line-height: 1.6;
+        }
+
+        .guide li::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 9px;
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: var(--accent);
+        }
+
+        .guide .guide-cta {
+            margin-top: 32px;
+            padding: 20px 24px;
+            background: var(--accent-glow);
+            border: 1px solid rgba(139,92,246,0.25);
+            border-radius: var(--radius-lg);
+            text-align: center;
+        }
+
+        .guide .guide-cta p {
+            color: var(--text);
+            font-size: 14px;
+            margin-bottom: 14px;
+        }
+
+        .guide .guide-cta a {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: var(--accent);
+            color: white;
+            font-family: inherit;
+            font-size: 13.5px;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+            border: none;
+            border-radius: var(--radius);
+            text-decoration: none;
+            transition: background 0.15s;
+        }
+
+        .guide .guide-cta a:hover {
+            background: var(--accent-hover);
+        }
+
         /* ── Animations ── */
         @keyframes spin {
             to { transform: rotate(360deg); }
@@ -965,15 +1129,17 @@ HTML_TEMPLATE = '''
 
     <main style="flex:1;">
         <div class="container">
+'''
 
+_HOMEPAGE_BODY = '''
             <!-- Hero -->
             <section class="hero">
                 <div class="hero-eyebrow">
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
-                    Privacy-first · Runs locally
+                    True redaction · Files deleted after download
                 </div>
-                <h1>Redact your statements<br>in seconds</h1>
-                <p>Upload credit card PDFs, whitelist the transactions you want to keep, and download clean redacted files — ready to share.</p>
+                <h1>Share your statement.<br>Not your whole life.</h1>
+                <p>Landlords and employers only need to see certain transactions. Upload your statement, choose what stays visible, and every other transaction is permanently blacked out — the text underneath is destroyed, not just covered.</p>
             </section>
 
             <!-- Main two-col -->
@@ -1065,6 +1231,37 @@ HTML_TEMPLATE = '''
                 </div>
             </div>
 
+            <!-- Trust -->
+            <section class="trust-grid">
+                <div class="card trust-card">
+                    <div class="trust-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
+                        </svg>
+                    </div>
+                    <h3>True redaction</h3>
+                    <p>We use PDF redaction annotations that destroy the text underneath. Copy-paste and text extraction find nothing — unlike drawing black boxes, which can be reversed.</p>
+                </div>
+                <div class="card trust-card">
+                    <div class="trust-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+                        </svg>
+                    </div>
+                    <h3>Nothing is kept</h3>
+                    <p>Your statement is processed in memory on our server and the file is deleted immediately after you download it. We never read, store, or log your transactions.</p>
+                </div>
+                <div class="card trust-card">
+                    <div class="trust-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M20 6L9 17l-5-5"/>
+                        </svg>
+                    </div>
+                    <h3>No account needed</h3>
+                    <p>No signup, no email, no tracking of who you are. Upload, redact, download, done.</p>
+                </div>
+            </section>
+
             <!-- Results -->
             <div id="results-section" class="results-section" style="display:none">
                 <p class="results-heading">Redacted files</p>
@@ -1079,19 +1276,21 @@ HTML_TEMPLATE = '''
                     <iframe src="https://docs.google.com/forms/d/e/1FAIpQLSd2PkHw7ATLfQYwL0CwdkKOnLynPU6mRweu5Zs5PCkKBeVB1g/viewform?usp=sf_link">Loading…</iframe>
                 </div>
             </div>
+'''
 
+_SITE_MID = '''
         </div>
     </main>
 
     <footer class="site-footer">
         <div class="container">
-            &copy; 2024 Redact. All rights reserved.
+            &copy; 2024 Redact &middot; <a href="/guides">Guides</a> &middot; All rights reserved.
         </div>
     </footer>
 </div>
 
 <script>
-// --- Theme toggle ---
+// --- Theme toggle (shared across homepage + guide pages) ---
 // Reads saved preference; falls back to system default (no class = system)
 (function() {
     const saved = localStorage.getItem('theme');
@@ -1114,7 +1313,11 @@ function toggleTheme() {
         localStorage.setItem('theme', 'dark');
     }
 }
+</script>
+'''
 
+_HOMEPAGE_SCRIPT = '''
+<script>
 // --- Provider UI ---
 function updateProviderUI() {
     const provider = document.getElementById('provider').value;
@@ -1345,9 +1548,15 @@ function shakeField(id) {
     setTimeout(() => { el.style.outline = ''; }, 1200);
 }
 </script>
+'''
+
+_SITE_END = '''
 </body>
 </html>
 '''
+
+# Homepage template = shared shell + homepage-only body and scripts.
+HTML_TEMPLATE = _SITE_OPEN + _HOMEPAGE_BODY + _SITE_MID + _HOMEPAGE_SCRIPT + _SITE_END
 
 def process_single_file(file, keywords, provider, enhanced_privacy):
     """Process one uploaded PDF.
@@ -1427,7 +1636,56 @@ def process_single_file(file, keywords, provider, enhanced_privacy):
 def index():
     usage_count = update_usage_counter()
     providers   = get_all_providers()
-    return render_template_string(HTML_TEMPLATE, usage_count=usage_count, providers=providers)
+    return render_template_string(HTML_TEMPLATE,
+        title='Redact Statements — Share Bank & Card Statements Without Oversharing',
+        meta_description='Blackout every transaction on your AMEX or Barclaycard statement except the ones you choose. For rental applications and expense claims. True redaction — text is destroyed, not hidden. Files deleted after download.',
+        usage_count=usage_count,
+        providers=providers)
+
+
+@app.route('/guides/<slug>')
+def guide_page(slug):
+    """Render a single SEO guide page in the shared site shell.
+
+    Guide bodies are plain HTML (no Jinja syntax) sourced from guides.GUIDES.
+    Unknown slugs 404.
+    """
+    from guides import GUIDES
+    guide = GUIDES.get(slug)
+    if guide is None:
+        abort(404)
+    template = _SITE_OPEN + guide['html_body'] + _SITE_MID + _SITE_END
+    return render_template_string(template,
+        title=guide['title'],
+        meta_description=guide['meta_description'])
+
+
+def _base_url():
+    """Canonical site root for absolute URLs (sitemap/robots). Env-configurable."""
+    return os.environ.get('BASE_URL', 'https://pdf-redact.onrender.com').rstrip('/')
+
+
+@app.route('/sitemap.xml')
+def sitemap():
+    """XML sitemap: homepage + every guide. Absolute URLs from BASE_URL."""
+    from guides import GUIDES
+    from xml.sax.saxutils import escape
+    urls = [_base_url() + '/'] + [_base_url() + '/guides/' + slug for slug in GUIDES]
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>',
+             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
+    for url in urls:
+        lines.append('  <url>')
+        lines.append('    <loc>' + escape(url) + '</loc>')
+        lines.append('  </url>')
+    lines.append('</urlset>')
+    return Response('\n'.join(lines) + '\n', mimetype='application/xml')
+
+
+@app.route('/robots.txt')
+def robots():
+    """Allow all crawlers + point at the sitemap."""
+    body = 'User-agent: *\nAllow: /\n\nSitemap: ' + _base_url() + '/sitemap.xml\n'
+    return Response(body, mimetype='text/plain')
 
 
 @app.route('/redact', methods=['POST'])
