@@ -1874,7 +1874,8 @@ def process_single_file(file, keywords, provider, enhanced_privacy, mode='custom
                 report_provider = 'unknown'  # honest report to the frontend
                 provider_detected = False
 
-        is_generic_bank = provider == 'generic_bank_uk'
+        # Revolut is a named provider but shares the generic bank parser.
+        is_generic_bank = provider in ('generic_bank_uk', 'revolut')
         is_barclaycard = (
             provider == 'barclaycard' or
             'barclaycard' in filename_lower or

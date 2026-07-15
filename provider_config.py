@@ -116,6 +116,11 @@ def detect_provider(pdf_text: str) -> Optional[str]:
     if 'barclaycard' in text_lower or 'barclays' in text_lower:
         return 'barclaycard'
 
+    # Revolut — validated against a real statement; uses the generic bank parser
+    # but is reported by name (analytics, dropdown, and user confidence).
+    if 'revolut' in text_lower:
+        return 'revolut'
+
     # Generic UK bank statement (BETA) — matched only when no card provider did.
     if re.search(r'\b(sort code|paid in|paid out|money in|money out)\b', text_lower):
         return 'generic_bank_uk'
@@ -130,6 +135,7 @@ def get_all_providers() -> List[Tuple[str, str]]:
         ('auto', 'Auto-detect'),
         ('amex_uk', 'American Express'),
         ('barclaycard', 'Barclaycard'),
+        ('revolut', 'Revolut'),
         ('generic_bank_uk', 'Other UK bank (beta)'),
     ]
     return providers

@@ -184,4 +184,38 @@ GUIDES = {
 ''',
     },
 
+    'redact-revolut-statement': {
+        'title': 'How to Redact a Revolut Statement Before Sharing It',
+        'meta_description': 'Black out transactions on a Revolut statement PDF before sending it to a landlord or employer — while keeping your name, balances, and income visible.',
+        'html_body': '''
+<div class="guide">
+    <h1>How to redact a Revolut statement before sharing it</h1>
+    <p class="guide-lead">Revolut statements are clean, easy to export — and painfully detailed. Here is how to share one with a landlord or employer without handing over every coffee, transfer, and subscription with it.</p>
+
+    <p>Revolut is many people's main account now, which means it is the statement letting agents and employers end up asking for. Exporting one takes seconds: in the app, go to your account, tap the statement icon, choose the period, and download the PDF. The problem is what is inside it. A Revolut statement lists every transaction with merchant names, precise timestamps, and running balances — a far more granular picture of your life than a landlord needs to confirm you can pay rent, or an employer needs to reimburse a train ticket.</p>
+
+    <h2>What a Revolut statement contains</h2>
+    <p>A standard Revolut PDF statement has a transaction table with five columns: date, description, money out, money in, and balance. It also carries your name, account details, and the statement period at the top, and often an information page about your account terms. The parts worth protecting are in the description column — merchant names, the people you send money to, and anything else you would rather not explain in a referencing email.</p>
+
+    <h2>What to keep visible, what to hide</h2>
+    <p>The rules are the same as for any UK bank statement. Keep your name, the statement period, opening and closing balances, and your income — salary or regular credits landing in the account. Those are what a landlord genuinely checks. Day-to-day spending, transfers to friends, subscriptions, and one-off purchases can be blacked out; they prove nothing about affordability that your balances and income do not already show.</p>
+
+    <p>For an expense claim it is even simpler: your employer needs to see the specific transactions you are claiming, and nothing else. Keep those rows, hide the rest.</p>
+
+    <h2>Why not just draw black boxes?</h2>
+    <p>Because drawn rectangles do not delete anything. Rectangles added in Preview or a browser PDF editor sit on top of the text — anyone can copy the "hidden" lines out from underneath, and some viewers will even show them on selection. True redaction destroys the text itself, so extraction finds nothing. (Our guide on <a href="/guides/why-black-boxes-fail-pdf-redaction">why black boxes fail</a> covers this in detail.)</p>
+
+    <h2>Redacting a Revolut statement with this tool</h2>
+    <p>Upload your Revolut PDF on the homepage — it is detected automatically. Then either enter keywords for the transactions that should stay visible (expense mode), or choose landlord mode, which keeps money coming in, your balances, and any rows you whitelist (your rent payments, for example) while blacking out the rest of your spending. Every removed transaction is destroyed, not covered: the text is gone from the file. Revolut's information pages and your balance column are left untouched, so the statement stays authentic and readable.</p>
+
+    <p>One honest caveat before you redact anything: mortgage underwriters and UK visa applications generally require unredacted statements — a redacted PDF will usually be rejected there, so send those in full. For landlords, letting agents, and expense claims, a sensibly redacted statement is normal and widely accepted.</p>
+
+    <div class="guide-cta">
+        <p>Ready to share only what you choose to?</p>
+        <a href="/">Redact your Revolut statement &rarr;</a>
+    </div>
+</div>
+''',
+    },
+
 }

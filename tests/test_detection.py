@@ -83,3 +83,12 @@ def test_detect_unknown_from_synthetic_pdf(tmp_path):
     _write_pdf(p, "Monzo Bank\nStatement\n01 May  Coffee   3.20")
     text = fitz.open(str(p))[0].get_text()
     assert detect_provider(text) is None
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("Revolut Ltd statement", "revolut"),
+    ("REVOLUT account with Money out and Money in", "revolut"),   # named beats generic
+    ("Barclays app payment to Revolut", "barclaycard"),           # card brands still win
+])
+def test_revolut_detection(text, expected):
+    assert detect_provider(text) == expected
