@@ -51,10 +51,14 @@ AMOUNT_RE = re.compile(r'^-?£?\s?[\d,]+\.\d{2}\s*(?:CR)?$', re.IGNORECASE)
 # column bands, so a description such as "Balance transfer" cannot mislead us.
 ROLE_LABELS = [
     ('balance',     ['balance']),
-    ('paid_out',    ['paid out', 'money out', 'withdrawal', 'debit', 'payment out', 'payments out']),
-    ('paid_in',     ['paid in', 'money in', 'receipt', 'deposit', 'credit']),
+    ('paid_out',    ['paid out', 'money out', 'withdrawal', 'debit', 'payment out', 'payments out', 'outgoing']),
+    ('paid_in',     ['paid in', 'money in', 'receipt', 'deposit', 'credit', 'incoming']),
     ('date',        ['date']),
     ('description', ['description', 'details', 'narrative', 'transaction', 'payee', 'memo']),
+    # 'Amount' is ambiguous: Wise labels its running-balance column "Amount",
+    # while single-money-column banks use it for the transaction amount.
+    # _detect_columns resolves it structurally after the bands are built.
+    ('amount',      ['amount']),
 ]
 
 # Tolerance (points) for grouping spans onto the same text baseline.
@@ -114,13 +118,14 @@ def _detect_columns(spans, page_width):
     clusters.sort(key=lambda c: (-len(c['items']), c['y']))
     header_line = clusters[0]['items']
 
-    # A real transaction-table header has several DISTINCT columns, including a
-    # date column and at least one money column. Anything weaker (prose lines
-    # that happen to echo label words, 2-label summary tables) is rejected and
-    # the page is left untouched rather than redacted on a guess.
+    # A real transaction-table header has several DISTINCT columns: at least one
+    # money column plus a date or description column. Anything weaker (prose
+    # lines that happen to echo label words, 2-label summary tables) is rejected
+    # and the page is left untouched rather than redacted on a guess.
     roles_found = {role for _, role in header_line}
-    if (len(roles_found) < 3 or 'date' not in roles_found
-            or not roles_found & {'paid_in', 'paid_out', 'balance'}):
+    if (len(roles_found) < 3
+            or not roles_found & {'date', 'description'}
+            or not roles_found & {'paid_in', 'paid_out', 'balance', 'amount'}):
         logger.info("No credible transaction header line — leaving page untouched.")
         return None, None
 
@@ -141,6 +146,21 @@ def _detect_columns(spans, page_width):
 
     columns = [{'role': roles[i], 'x0': bounds[i], 'x1': bounds[i + 1]}
                for i in range(len(roles))]
+
+    # Resolve ambiguous 'amount' columns structurally: when it is the RIGHTMOST
+    # column, no explicit balance column exists, and separate in/out columns do
+    # (the Wise shape), it is the running balance and must be preserved.
+    # Otherwise it is the transaction-amount column and is treated as paid_out
+    # (redactable; sign/CR still drives credit detection).
+    role_set = {c['role'] for c in columns}
+    for i, col in enumerate(columns):
+        if col['role'] == 'amount':
+            if (i == len(columns) - 1 and 'balance' not in role_set
+                    and role_set & {'paid_in', 'paid_out'}):
+                col['role'] = 'balance'
+            else:
+                col['role'] = 'paid_out'
+
     logger.info(f"Detected {len(columns)} columns: {[(c['role'], round(c['x0']), round(c['x1'])) for c in columns]}")
     return columns, header_y
 
@@ -201,9 +221,14 @@ def _parse_amount(text):
         return 0.0
 
 
-def _pad_rect(bbox, pad=1.0):
+def _pad_rect(bbox, pad_x=1.0):
+    """Redaction rect for a span: padded horizontally only. The span bbox
+    already covers full glyph extents vertically, and any vertical padding can
+    bleed into the neighbouring baseline — PyMuPDF removes every character whose
+    box merely intersects a redaction rect, which would destroy KEPT rows
+    adjacent to redacted ones on tightly-spaced statements."""
     x0, y0, x1, y1 = bbox
-    return fitz.Rect(x0 - pad, y0 - pad, x1 + pad, y1 + pad)
+    return fitz.Rect(x0 - pad_x, y0, x1 + pad_x, y1)
 
 
 def _is_date_cell(cell, date_column_known):
@@ -259,6 +284,50 @@ def _is_continuation(cells):
 
 
 # ── Per-page redaction ──────────────────────────────────────────────────────
+def _redact_dateless(page, rows, columns, header_y, keep_keywords, keep_credits, kept_rows):
+    """Redact a dateless (Wise-style) transaction table.
+
+    A transaction GROUP is a row carrying at least one amount in a money column
+    (the head), plus any immediately-following rows without money cells that sit
+    within TAIL_GAP points of the previous group row — Wise puts the date and
+    transaction reference on such a tail line. Prose further down the page
+    (regulatory boilerplate) is detached by the gap rule and never touched.
+    """
+    TAIL_GAP = 20  # pt: max vertical gap for a tail line to belong to the group
+
+    groups, current = [], None
+    for row in rows:
+        if row["y0"] <= header_y:
+            continue
+        cells = [dict(s, role=_assign_role(s, columns)) for s in row["spans"]]
+        has_money = any(c["role"] in ("paid_in", "paid_out") and _is_amount(c["text"])
+                        for c in cells)
+        if has_money:
+            current = {"cells": list(cells), "head": cells, "last_y": row["y0"]}
+            groups.append(current)
+        elif current is not None and row["y0"] - current["last_y"] <= TAIL_GAP:
+            current["cells"].extend(cells)
+            current["last_y"] = row["y0"]
+        else:
+            current = None  # detached row: furniture/boilerplate — untouched
+
+    for g in groups:
+        description = " ".join(
+            c["text"] for c in g["cells"] if c["role"] == "description").strip()
+        is_kw = any(kw.lower() in description.lower()
+                    for kw in keep_keywords) if keep_keywords else False
+        is_credit = _is_credit(g["head"], columns) if keep_credits else False
+        amount = _row_amount(g["head"])
+        if is_kw or is_credit:
+            kept_rows.append({"description": description, "amount": amount})
+            logger.info(f"  KEEP   {description} | £{amount:.2f}")
+        else:
+            logger.info(f"  REDACT {description}")
+            for c in g["cells"]:
+                if c["role"] in ("date", "description", "paid_in", "paid_out"):
+                    page.add_redact_annot(_pad_rect(c["bbox"]), fill=(0, 0, 0))
+
+
 def _redact_page(page, keep_keywords, kept_rows, keep_credits=False):
     spans = _collect_spans(page)
     columns, header_y = _detect_columns(spans, page.rect.width)
@@ -268,6 +337,15 @@ def _redact_page(page, keep_keywords, kept_rows, keep_credits=False):
 
     date_column_known = any(c["role"] == "date" for c in columns)
     rows = _cluster_rows(spans)
+
+    if not date_column_known:
+        # Wise-style dateless layout: no Date column — each transaction is a
+        # money row, optionally followed by close-by tail lines underneath
+        # (date + transaction reference, wrapped description).
+        _redact_dateless(page, rows, columns, header_y,
+                         keep_keywords, keep_credits, kept_rows)
+        page.apply_redactions()
+        return
 
     current_redacted = False  # was the most recent transaction redacted?
     for row in rows:

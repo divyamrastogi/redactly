@@ -218,4 +218,36 @@ GUIDES = {
 ''',
     },
 
+    'redact-wise-statement': {
+        'title': 'How to Redact a Wise Statement Before Sharing It',
+        'meta_description': 'Black out transactions on a Wise (formerly TransferWise) statement PDF before sending it to a landlord or employer — keeping your name, balances, and income visible.',
+        'html_body': '''
+<div class="guide">
+    <h1>How to redact a Wise statement before sharing it</h1>
+    <p class="guide-lead">Wise statements pack a lot onto one page: every transfer, card payment, and reference number. Here is how to share one without handing over your entire financial life alongside it.</p>
+
+    <p>If Wise holds your GBP account — as it does for many freelancers, contractors, and anyone paid from abroad — its statement is what you will be asked for when renting a flat or claiming expenses. Exporting one is quick: open the account in the app or on the web, choose Statements, pick the period, download the PDF. What you get is compact but complete: description, incoming, outgoing, and a running balance for every single transaction, each with a dated reference line underneath.</p>
+
+    <h2>What a Wise statement contains</h2>
+    <p>Wise's layout differs from a high-street bank's. There is no separate date column — each transaction takes two lines: the description and amounts first, then the date and a transaction reference below it. The final column is your running balance. Your name, account details, IBAN, and the statement period sit at the top, with regulatory text at the bottom. The sensitive part is the description lines: who you paid, who paid you, and the references that tie them together.</p>
+
+    <h2>What to keep visible, what to hide</h2>
+    <p>The same rules as any UK statement apply. For a landlord or letting agent: keep your name, the statement period, your balances, and the money coming in — salary, client payments, regular transfers. Hide the rest: card payments, transfers to friends, subscriptions. For an expense claim, keep only the transactions being reimbursed. Balances stay visible either way, because a statement with no balances looks doctored rather than discreet.</p>
+
+    <h2>Skip the black rectangles</h2>
+    <p>Drawing boxes over a PDF hides nothing — the text remains underneath and copies straight out. True redaction removes the text from the file itself. Our guide on <a href="/guides/why-black-boxes-fail-pdf-redaction">why black boxes fail</a> explains the difference.</p>
+
+    <h2>Redacting a Wise statement with this tool</h2>
+    <p>Upload your Wise PDF on the homepage — the format is detected automatically, including the two-line transaction layout. In expense mode, enter keywords for the rows that should stay; in landlord mode, incoming payments, balances, and whitelisted rows (your rent, say) stay visible while everything else is destroyed — descriptions, amounts, dates, and reference numbers together. The running-balance column and the regulatory text are left untouched, so the document stays authentic.</p>
+
+    <p>The honest caveat, as always: mortgage underwriters and UK visa applications generally require unredacted statements, so send those in full. For rental referencing and expense claims, a sensibly redacted statement is normal.</p>
+
+    <div class="guide-cta">
+        <p>Ready to share only what you choose to?</p>
+        <a href="/">Redact your Wise statement &rarr;</a>
+    </div>
+</div>
+''',
+    },
+
 }

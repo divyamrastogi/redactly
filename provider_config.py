@@ -121,6 +121,12 @@ def detect_provider(pdf_text: str) -> Optional[str]:
     if 'revolut' in text_lower:
         return 'revolut'
 
+    # Wise — validated against a real statement; dateless two-line layout handled
+    # by the generic parser. Match on distinctive markers only, never the bare
+    # word 'wise' (false positives: "Clockwise", "likewise", …).
+    if re.search(r'\b(wise payments|transferwise|wise\.com)\b', text_lower):
+        return 'wise'
+
     # Generic UK bank statement (BETA) — matched only when no card provider did.
     if re.search(r'\b(sort code|paid in|paid out|money in|money out)\b', text_lower):
         return 'generic_bank_uk'
@@ -136,6 +142,7 @@ def get_all_providers() -> List[Tuple[str, str]]:
         ('amex_uk', 'American Express'),
         ('barclaycard', 'Barclaycard'),
         ('revolut', 'Revolut'),
+        ('wise', 'Wise'),
         ('generic_bank_uk', 'Other UK bank (beta)'),
     ]
     return providers
