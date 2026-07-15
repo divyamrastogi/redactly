@@ -9,3 +9,6 @@ bank_requests.txt
 # Payments runtime state (Phase 4)
 consumed_sessions.txt
 payments_log.txt
+
+# Real statements for local e2e regression tests — NEVER commit these
+tests/e2e_statements/
