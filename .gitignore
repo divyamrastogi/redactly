@@ -6,3 +6,6 @@ __pycache__
 # Runtime demand-signal logs (Phase 0)
 unrecognized_uploads.txt
 bank_requests.txt
+# Payments runtime state (Phase 4)
+consumed_sessions.txt
+payments_log.txt

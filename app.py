@@ -1,4 +1,4 @@
-from flask import Flask, request, send_file, after_this_request, render_template_string, jsonify, abort, Response
+from flask import Flask, request, send_file, after_this_request, render_template_string, jsonify, abort, redirect, Response
 import os
 import re
 import logging
@@ -9,6 +9,7 @@ from redact_financial_details import redact_barclaycard_with_privacy, redact_ame
 from redact_barclaycard import redact_barclaycard
 from redact_bank_generic import redact_bank_generic
 from provider_config import get_all_providers, detect_provider
+import payments
 
 app = Flask(__name__)
 
@@ -979,6 +980,29 @@ _SITE_OPEN = '''<!DOCTYPE html>
             height: 13px;
         }
 
+        /* ── Pay toast (post-purchase redirect) ── */
+        .pay-toast {
+            position: fixed;
+            left: 50%;
+            bottom: 28px;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--bg-card);
+            border: 1px solid var(--success-border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow);
+            padding: 12px 18px;
+            font-size: 13px;
+            color: var(--text);
+            z-index: 50;
+            animation: slide-in 0.25s ease-out;
+        }
+        .pay-toast.error { border-color: var(--error-border); }
+        .pay-toast svg { width: 16px; height: 16px; color: var(--success); flex-shrink: 0; }
+        .pay-toast.error svg { color: var(--error); }
+
         /* ── Custom request ── */
         .custom-section {
             margin-bottom: 48px;
@@ -1450,6 +1474,32 @@ function toggleTheme() {
 
 _HOMEPAGE_SCRIPT = '''
 <script>
+// --- Post-purchase toast (redirect target /?pay=success|already|unpaid|error) ---
+(function () {
+    const pay = new URLSearchParams(location.search).get('pay');
+    if (!pay) return;
+    const msg = {
+        success: 'Payment received — your credits have been added.',
+        already: 'This payment was already used.',
+        unpaid:  'Payment is not yet complete.',
+        error:   'We could not verify your payment. Please try again.'
+    }[pay];
+    if (!msg) return;
+    const isError = pay !== 'success';
+    const toast = document.createElement('div');
+    toast.className = 'pay-toast' + (isError ? ' error' : '');
+    toast.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            ${isError
+                ? '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>'
+                : '<polyline points="20 6 9 17 4 12"/>'}
+        </svg>
+        <span>${msg}</span>`;
+    document.body.appendChild(toast);
+    history.replaceState(null, '', '/');   // drop ?pay= so a refresh won't re-toast
+    setTimeout(() => toast.remove(), 6000);
+})();
+
 // --- Provider UI ---
 function getSelectedMode() {
     const checked = document.querySelector('#mode-group input[name="mode"]:checked');
@@ -1580,7 +1630,13 @@ async function processFiles() {
             const res  = await fetch('/redact', { method: 'POST', body: fd });
             const data = await res.json();
 
-            if (data.error) {
+            // No credits left (payments enabled) — show a paywall card and stop,
+            // since the remaining files would 402 too.
+            if (data.error === 'no_credits') {
+                gtag('event', 'paywall_shown');
+                showPaywall(card, file.name);
+                break;
+            } else if (data.error) {
                 gtag('event', 'redact_error');
                 updateCard(card, 'error', file.name, null, data.error);
             } else {
@@ -1662,6 +1718,26 @@ function showBetaBanner() {
     banner.id = 'beta-banner';
     banner.innerHTML = '<p>Bank statement support is in beta — please check every page of the output before sharing it.</p>';
     section.appendChild(banner);
+}
+
+function showPaywall(card, filename) {
+    // Shown when /redact returns 402 no_credits (payments enabled).
+    card.className = 'result-card';
+    card.innerHTML = `
+        <div class="result-icon" style="background:rgba(245,158,11,0.12)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
+            </svg>
+        </div>
+        <div class="result-info">
+            <p class="result-name">${filename}</p>
+            <p class="result-detail">You've used your free document.</p>
+            <p class="result-detail" style="margin-top:6px">£2.99 for one document · £9.99 for five. No account needed.</p>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
+            <a href="/buy?pack=single" class="btn-download" style="background:var(--accent);color:#fff;border-color:var(--accent);justify-content:center;padding:8px 14px">Buy £2.99</a>
+            <a href="/buy?pack=pack5" style="font-size:12px;color:var(--text-muted);text-decoration:underline;text-align:center">5 for £9.99</a>
+        </div>`;
 }
 
 function addPendingCard(filename) {
@@ -1944,13 +2020,26 @@ def redact_endpoint():
     if not is_landlord and not keywords:
         return jsonify({'error': 'No keywords provided'}), 400
 
+    # --- Payments (Phase 4): gate on credits BEFORE doing any work. ----------
+    # When payments are OFF this whole block is skipped — no cookie read, no
+    # decrement — so the free, unlimited behaviour is unchanged.
+    enabled = payments.payments_enabled()
+    credits = None
+    if enabled:
+        credits = payments.get_credits(request)
+        if credits is None:
+            # First document free: a brand-new visitor starts with one credit.
+            credits = payments.FREE_CREDITS
+        if credits <= 0:
+            return jsonify({'error': 'no_credits', 'buy_url': '/buy'}), 402
+
     try:
         redacted_path, total, kept_count, provider_detected, detected_provider, beta = process_single_file(
             file, keywords, provider, enhanced,
             mode=mode, keep_credits=is_landlord
         )
         display_name = os.path.basename(redacted_path)
-        return jsonify({
+        resp = jsonify({
             'filename':         display_name,
             'download_url':     f'/download/{redacted_path}',
             'total':            total,
@@ -1959,6 +2048,10 @@ def redact_endpoint():
             'provider':         detected_provider,
             'beta':             bool(beta),
         })
+        # Spend one credit only after a successful redaction (never on failure).
+        if enabled:
+            payments.set_credits_cookie(resp, max(credits - 1, 0))
+        return resp
     except LandlordCardError as e:
         # Friendly 400: landlord mode doesn't apply to credit-card statements.
         return jsonify({'error': str(e)}), 400
@@ -1978,6 +2071,101 @@ def download_file(filename):
         return response
 
     return send_file(filename, as_attachment=True)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Payments (Phase 4, Task 4.1). Every route below 404s unless payments are
+# enabled, so the disabled (today's production) state exposes none of them.
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route('/buy', methods=['GET'])
+def buy():
+    """Create a Stripe Checkout Session for ?pack=single|pack5 and redirect to it."""
+    if not payments.payments_enabled():
+        abort(404)
+    pack = request.args.get('pack', 'single')
+    if pack not in payments.PACK_CREDITS:
+        return jsonify({'error': 'unknown pack'}), 400
+    try:
+        session = payments.create_checkout_session(pack)
+    except Exception as e:
+        logger.error(f"Stripe create session error: {e}", exc_info=True)
+        return jsonify({'error': 'checkout failed'}), 502
+    return redirect(session.url)
+
+
+@app.route('/paid', methods=['GET'])
+def paid():
+    """Stripe success redirect: verify paid + not-yet-consumed, then grant credits.
+
+    Query: ``session_id``. Credit granting happens here; the webhook is only the
+    audit trail. Idempotent — a session grants credits at most once.
+    """
+    if not payments.payments_enabled():
+        abort(404)
+    session_id = request.args.get('session_id')
+    if not session_id:
+        abort(400)
+    try:
+        session = payments.retrieve_session(session_id)
+    except Exception as e:
+        logger.error(f"Stripe retrieve session error: {e}", exc_info=True)
+        return redirect('/?pay=error')
+
+    payment_status = (session.get('payment_status')
+                      if isinstance(session, dict)
+                      else getattr(session, 'payment_status', None))
+    if payment_status != 'paid':
+        return redirect('/?pay=unpaid')
+
+    # claim_session atomically checks-and-marks; False means already granted.
+    if not payments.claim_session(session_id):
+        return redirect('/?pay=already')
+
+    grant = payments.credits_for_session(session)
+    current = payments.get_credits(request)
+    if current is None:
+        current = 0
+    resp = redirect('/?pay=success')
+    payments.set_credits_cookie(resp, current + grant)
+    return resp
+
+
+@app.route('/stripe-webhook', methods=['POST'])
+def stripe_webhook():
+    """Stripe webhook: verify signature, log completed sessions (audit only).
+
+    Cookie granting happens on ``/paid``; this endpoint only records that a
+    checkout completed — session id + amount, never statement content.
+    """
+    if not payments.payments_enabled():
+        abort(404)
+    signature = request.headers.get('Stripe-Signature', '')
+    try:
+        event = payments.verify_webhook(request.get_data(), signature)
+    except Exception as e:
+        logger.warning(f"Stripe webhook signature verification failed: {e}")
+        return jsonify({'error': 'invalid signature'}), 400
+
+    # event may be a plain dict (tests) or a stripe StripeObject (production);
+    # both support the field names used below.
+    event_type = event.get('type') if isinstance(event, dict) else getattr(event, 'type', None)
+    if event_type != 'checkout.session.completed':
+        return jsonify({'received': True})
+
+    data = event.get('data') if isinstance(event, dict) else getattr(event, 'data', None)
+    obj = (data.get('object') if isinstance(data, dict)
+           else getattr(data, 'object', None)) or {}
+    sid = obj.get('id', '') if isinstance(obj, dict) else getattr(obj, 'id', '')
+    amount = (obj.get('amount_total') if isinstance(obj, dict)
+              else getattr(obj, 'amount_total', None))
+    try:
+        with open('payments_log.txt', 'a') as f:
+            amt = '' if amount is None else f',{amount}'
+            f.write(f"{_iso_now()},{sid}{amt}\n")
+    except Exception as e:
+        logger.error(f"Error writing payments_log.txt: {e}")
+    return jsonify({'received': True})
 
 
 @app.route('/bank-request', methods=['POST'])
