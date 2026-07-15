@@ -121,6 +121,11 @@ def detect_provider(pdf_text: str) -> Optional[str]:
     if 'revolut' in text_lower:
         return 'revolut'
 
+    # HSBC — validated against a real statement; classic dated layout handled by
+    # the generic parser (fragmented headers, DD MMM YY dates, carry rows).
+    if 'hsbc' in text_lower:
+        return 'hsbc'
+
     # Wise — validated against a real statement; dateless two-line layout handled
     # by the generic parser. Match on distinctive markers only, never the bare
     # word 'wise' (false positives: "Clockwise", "likewise", …).
@@ -141,6 +146,7 @@ def get_all_providers() -> List[Tuple[str, str]]:
         ('auto', 'Auto-detect'),
         ('amex_uk', 'American Express'),
         ('barclaycard', 'Barclaycard'),
+        ('hsbc', 'HSBC'),
         ('revolut', 'Revolut'),
         ('wise', 'Wise'),
         ('generic_bank_uk', 'Other UK bank (beta)'),

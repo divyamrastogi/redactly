@@ -24,8 +24,8 @@ def client():
 
 # --- Guide pages -----------------------------------------------------------
 
-def test_guides_dict_has_six_entries():
-    assert len(GUIDES) == 6
+def test_guides_dict_has_seven_entries():
+    assert len(GUIDES) == 7
 
 
 def test_each_guide_has_required_fields():

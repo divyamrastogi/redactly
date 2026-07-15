@@ -92,3 +92,12 @@ def test_detect_unknown_from_synthetic_pdf(tmp_path):
 ])
 def test_revolut_detection(text, expected):
     assert detect_provider(text) == expected
+
+
+@pytest.mark.parametrize("text,expected", [
+    ("HSBC UK Bank plc statement", "hsbc"),
+    ("hsbc.co.uk Paid out Paid in", "hsbc"),
+    ("Barclaycard payment to HSBC", "barclaycard"),   # card brands still win
+])
+def test_hsbc_detection(text, expected):
+    assert detect_provider(text) == expected

@@ -37,10 +37,15 @@ logger = logging.getLogger(__name__)
 # ── Patterns ────────────────────────────────────────────────────────────────
 # Row dates: "1 May" / "01 May" (D MMM), "01/05/2026" (DD/MM/YYYY), "01/05/26"
 DATE_PATTERNS = [
-    re.compile(r'^\d{1,2}\s+[A-Za-z]{3}(?:\s+\d{4})?$'),  # "1 May" / "1 May 2026" (Revolut)
+    # "1 May" / "01 Jun 26" (HSBC) / "1 May 2026" (Revolut)
+    re.compile(r'^\d{1,2}\s+[A-Za-z]{3}(?:\s+\d{2}|\s+\d{4})?$'),
     re.compile(r'^\d{1,2}/\d{1,2}/\d{4}$'),
     re.compile(r'^\d{1,2}/\d{1,2}/\d{2}$'),
 ]
+
+# Rows that must always survive regardless of keywords (statement structure,
+# not transactions): HSBC-style balance carry rows.
+ALWAYS_KEEP_RE = re.compile(r'balance\s+(brought|carried)\s+forward', re.IGNORECASE)
 
 # Amounts: "1,234.56", "1234.56", "£1,234.56", "1,234.56CR", "-12.34"
 AMOUNT_RE = re.compile(r'^-?£?\s?[\d,]+\.\d{2}\s*(?:CR)?$', re.IGNORECASE)
@@ -66,70 +71,98 @@ ROW_Y_TOLERANCE = 3
 
 
 # ── Header / column detection ───────────────────────────────────────────────
+# Longer labels that only ever match EXACTLY (never by containment — a prose
+# sentence mentioning these words must not qualify).
+EXACT_LABELS = {
+    'payment type and details': 'description',   # HSBC
+}
+
+
 def _header_role(text):
     """Map a column-header label to a role, or None if it isn't a header label.
 
     Header labels are short ("Paid out", "Running balance") — prose that merely
     mentions a label word ("Notes about your balance…") must never qualify, so
     long/wordy spans are rejected and labels match on word boundaries only.
+    Known multi-word labels (EXACT_LABELS) match by exact equality instead.
     """
-    t = text.strip().lower()
-    if not t or len(t) > 25 or len(t.split()) > 3:
+    t = ' '.join(text.strip().lower().split())
+    if not t:
         return None
+    # De-spaced exact-equality lookup: renderers split or fuse words arbitrarily
+    # ("Paym ent type and details", "£Paidout"), so compare letters only.
+    t_ns0 = re.sub(r'[^a-z0-9]', '', t)
+    for lbl, role in EXACT_LABELS.items():
+        if t_ns0 == re.sub(r'[^a-z0-9]', '', lbl):
+            return role
+    if len(t) > 25 or len(t.split()) > 3:
+        return None
+    # Some renderers fuse label glyph runs into one un-spaced span ("£Paidout"),
+    # so also accept an EXACT de-spaced match (never containment).
+    t_ns = re.sub(r'[^a-z0-9]', '', t)
     for role, labels in ROLE_LABELS:
         for lbl in labels:
-            if re.search(rf'\b{re.escape(lbl)}\b', t):
+            if re.search(rf'\b{re.escape(lbl)}\b', t) or t_ns == lbl.replace(' ', ''):
                 return role
     return None
 
 
+def _merge_line_phrases(line_spans, gap=12):
+    """Merge adjacent spans on one baseline into phrases (x-gap <= gap pt).
+
+    Banks fragment header labels into separate spans ("£", "Paid", "out" —
+    HSBC); merging reunites them so the label matches. It also strengthens the
+    prose defence: inline bold segments of a sentence merge back into one long
+    phrase, which the word-count limit in _header_role then rejects.
+    """
+    phrases = []
+    cur = None
+    for s in sorted(line_spans, key=lambda s: s['bbox'][0]):
+        if cur is not None and s['bbox'][0] - cur['bbox'][2] <= gap:
+            cur = {'text': cur['text'] + ' ' + s['text'],
+                   'bbox': (cur['bbox'][0],
+                            min(cur['bbox'][1], s['bbox'][1]),
+                            s['bbox'][2],
+                            max(cur['bbox'][3], s['bbox'][3]))}
+        else:
+            if cur is not None:
+                phrases.append(cur)
+            cur = {'text': s['text'], 'bbox': tuple(s['bbox'])}
+    if cur is not None:
+        phrases.append(cur)
+    return phrases
+
+
 def _detect_columns(spans, page_width):
-    """Find the header line and derive column bands by X-clustering the headers.
+    """Find the header line and derive column bands from its label phrases.
 
     Returns (columns, header_y) where columns is a list of
     ``{'role', 'x0', 'x1'}`` sorted left-to-right, or (None, None) if no header
     line could be identified (in which case we refuse to redact blindly).
+
+    A credible header line needs >= 3 DISTINCT roles, including a date or
+    description column AND at least one money column — prose lines that echo
+    label words and 2-label summary tables never qualify.
     """
-    # Candidate header spans (those whose label maps to a known role).
-    candidates = []
-    for s in spans:
-        role = _header_role(s['text'])
-        if role:
-            candidates.append((s, role))
-    if not candidates:
-        return None, None
-
-    # Cluster candidates by Y to find the dominant header line. A real header
-    # line has several labelled spans on one baseline; stray description text
-    # that happens to contain a label ("Balance transfer") forms a 1-span
-    # cluster and never dominates.
-    candidates.sort(key=lambda t: t[0]['bbox'][1])
-    clusters = []
-    for span, role in candidates:
-        y = span['bbox'][1]
-        placed = False
-        for c in clusters:
-            if abs(c['y'] - y) <= 5:
-                c['items'].append((span, role))
-                placed = True
-                break
-        if not placed:
-            clusters.append({'y': y, 'items': [(span, role)]})
-    clusters.sort(key=lambda c: (-len(c['items']), c['y']))
-    header_line = clusters[0]['items']
-
-    # A real transaction-table header has several DISTINCT columns: at least one
-    # money column plus a date or description column. Anything weaker (prose
-    # lines that happen to echo label words, 2-label summary tables) is rejected
-    # and the page is left untouched rather than redacted on a guess.
-    roles_found = {role for _, role in header_line}
-    if (len(roles_found) < 3
-            or not roles_found & {'date', 'description'}
-            or not roles_found & {'paid_in', 'paid_out', 'balance', 'amount'}):
+    best = None
+    for line in _cluster_rows(spans, tol=5):
+        cands = []
+        for phrase in _merge_line_phrases(line['spans']):
+            role = _header_role(phrase['text'])
+            if role:
+                cands.append((phrase, role))
+        roles_found = {role for _, role in cands}
+        if (len(roles_found) >= 3
+                and roles_found & {'date', 'description'}
+                and roles_found & {'paid_in', 'paid_out', 'balance', 'amount'}):
+            if best is None or len(cands) > len(best):
+                best = cands
+    if best is None:
         logger.info("No credible transaction header line — leaving page untouched.")
         return None, None
 
-    header_y = min(sp['bbox'][3] for sp, _ in header_line)  # bottom of header text
+    header_line = best
+    header_y = min(p['bbox'][3] for p, _ in header_line)  # bottom of header text
 
     # Sort header spans by X-centre and split the page into bands at the
     # midpoints between consecutive header centres.
@@ -222,13 +255,17 @@ def _parse_amount(text):
 
 
 def _pad_rect(bbox, pad_x=1.0):
-    """Redaction rect for a span: padded horizontally only. The span bbox
-    already covers full glyph extents vertically, and any vertical padding can
-    bleed into the neighbouring baseline — PyMuPDF removes every character whose
-    box merely intersects a redaction rect, which would destroy KEPT rows
-    adjacent to redacted ones on tightly-spaced statements."""
+    """Redaction rect for a span: padded horizontally, INSET vertically.
+
+    PyMuPDF removes every character whose box merely intersects a redaction
+    rect, and on tightly-leaded statements consecutive rows' span boxes overlap
+    vertically — a full-height rect would destroy KEPT rows adjacent to
+    redacted ones. A band through the vertical core of the line still removes
+    every character of the target row (their boxes all cross the core) while
+    never reaching the neighbours."""
     x0, y0, x1, y1 = bbox
-    return fitz.Rect(x0 - pad_x, y0, x1 + pad_x, y1)
+    inset = (y1 - y0) * 0.25
+    return fitz.Rect(x0 - pad_x, y0 + inset, x1 + pad_x, y1 - inset)
 
 
 def _is_date_cell(cell, date_column_known):
@@ -347,38 +384,41 @@ def _redact_page(page, keep_keywords, kept_rows, keep_credits=False):
         page.apply_redactions()
         return
 
-    current_redacted = False  # was the most recent transaction redacted?
+    # Dated layouts: a transaction GROUP starts at a row with a date cell and
+    # absorbs the following dateless rows that sit close underneath (wrapped
+    # descriptions — HSBC also puts the amount on such continuation lines).
+    TAIL_GAP = 20
+    groups, current = [], None
     for row in rows:
         if row["y0"] <= header_y:
             continue  # header line or page furniture above it (name, sort code)
         cells = [dict(s, role=_assign_role(s, columns)) for s in row["spans"]]
-
-        date_cells = [c for c in cells if _is_date_cell(c, date_column_known)]
-        if date_cells:
-            description = " ".join(c["text"] for c in cells if c["role"] == "description").strip()
-            is_kw = any(kw.lower() in description.lower() for kw in keep_keywords) if keep_keywords else False
-            is_credit = _is_credit(cells, columns) if keep_credits else False
-            kept = is_kw or is_credit
-            amount = _row_amount(cells)
-            if kept:
-                current_redacted = False
-                kept_rows.append({"description": description, "amount": amount})
-                logger.info(f"  KEEP   {date_cells[0]['text']} | {description} | £{amount:.2f}")
-            else:
-                current_redacted = True
-                logger.info(f"  REDACT {date_cells[0]['text']} | {description}")
-                # Redact every cell except the balance column (and unknowns).
-                for c in cells:
-                    if c["role"] in ("date", "description", "paid_in", "paid_out"):
-                        page.add_redact_annot(_pad_rect(c["bbox"]), fill=(0, 0, 0))
+        if any(_is_date_cell(c, date_column_known) for c in cells):
+            current = {"cells": list(cells), "last_y": row["y0"]}
+            groups.append(current)
+        elif current is not None and row["y0"] - current["last_y"] <= TAIL_GAP:
+            current["cells"].extend(cells)
+            current["last_y"] = row["y0"]
         else:
-            # Wrapped description belonging to the transaction above.
-            if current_redacted and _is_continuation(cells):
-                for c in cells:
-                    if c["role"] == "description":
-                        page.add_redact_annot(_pad_rect(c["bbox"]), fill=(0, 0, 0))
-            # Rows with a balance/amount cell but no date (closing balance,
-            # carried-forward totals) and pure furniture are left untouched.
+            current = None  # detached row: totals/furniture — untouched
+
+    for g in groups:
+        description = " ".join(
+            c["text"] for c in g["cells"] if c["role"] == "description").strip()
+        if ALWAYS_KEEP_RE.search(description):
+            continue  # brought/carried-forward rows are structure, not spend
+        is_kw = any(kw.lower() in description.lower()
+                    for kw in keep_keywords) if keep_keywords else False
+        is_credit = _is_credit(g["cells"], columns) if keep_credits else False
+        amount = _row_amount(g["cells"])
+        if is_kw or is_credit:
+            kept_rows.append({"description": description, "amount": amount})
+            logger.info(f"  KEEP   {description} | £{amount:.2f}")
+        else:
+            logger.info(f"  REDACT {description}")
+            for c in g["cells"]:
+                if c["role"] in ("date", "description", "paid_in", "paid_out"):
+                    page.add_redact_annot(_pad_rect(c["bbox"]), fill=(0, 0, 0))
 
     page.apply_redactions()
 

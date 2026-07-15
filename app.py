@@ -1874,8 +1874,8 @@ def process_single_file(file, keywords, provider, enhanced_privacy, mode='custom
                 report_provider = 'unknown'  # honest report to the frontend
                 provider_detected = False
 
-        # Revolut and Wise are named providers but share the generic bank parser.
-        is_generic_bank = provider in ('generic_bank_uk', 'revolut', 'wise')
+        # HSBC, Revolut, and Wise are named providers sharing the generic bank parser.
+        is_generic_bank = provider in ('generic_bank_uk', 'hsbc', 'revolut', 'wise')
         is_barclaycard = (
             provider == 'barclaycard' or
             'barclaycard' in filename_lower or

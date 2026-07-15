@@ -250,4 +250,35 @@ GUIDES = {
 ''',
     },
 
+    'redact-hsbc-statement': {
+        'title': 'How to Redact an HSBC Statement Before Sharing It',
+        'meta_description': 'Black out transactions on an HSBC statement PDF before sending it to a landlord or employer — keeping your name, balances, and income visible.',
+        'html_body': '''
+<div class="guide">
+    <h1>How to redact an HSBC statement before sharing it</h1>
+    <p class="guide-lead">HSBC statements are the classic British bank statement: dense, columnar, and very thorough. Here is how to share one for a rental application or expense claim without disclosing every line of your spending.</p>
+
+    <p>When a letting agent or employer asks for "a recent bank statement", an HSBC PDF is one of the most common documents that changes hands. You can download one from online banking or the app in seconds: Statements, pick the month, download PDF. Inside is the familiar table — Date, Payment type and details, Paid out, Paid in, Balance — listing every direct debit, card payment, standing order, and transfer, bracketed by BALANCE BROUGHT FORWARD and BALANCE CARRIED FORWARD rows.</p>
+
+    <h2>What to keep visible, what to hide</h2>
+    <p>For a landlord: keep your name, the statement period, the brought-forward and carried-forward balances, the running balance column, and your income — salary credits and any regular payments in. That is what affordability checks actually look at. Day-to-day spending — supermarkets, subscriptions, transfers to friends, the payment-type codes beside them — can be blacked out without weakening your application. For an expense claim, the rule is simpler still: keep the claimed transactions, hide everything else.</p>
+
+    <p>Multi-line entries deserve a mention: HSBC often continues a transaction's details onto a second line, with the amount sitting on that continuation line. When you redact an entry, both lines need to go — a stray reference line can identify the very merchant you meant to hide.</p>
+
+    <h2>Why drawn boxes don't work</h2>
+    <p>Covering lines with black rectangles in Preview or a PDF editor hides nothing: the text is still in the file and copies straight out. True redaction removes the text itself. Our guide on <a href="/guides/why-black-boxes-fail-pdf-redaction">why black boxes fail</a> has the details.</p>
+
+    <h2>Redacting an HSBC statement with this tool</h2>
+    <p>Upload the PDF on the homepage — HSBC's layout is detected automatically, including two-line entries and the brought/carried-forward rows, which are always preserved so the statement's arithmetic stays intact. In expense mode, enter keywords for the transactions to keep; in landlord mode, income, balances, and whitelisted rows (rent, for instance) stay visible while all other spending is destroyed — descriptions, amounts, and payment-type codes together. The balance column is never touched.</p>
+
+    <p>The usual honest caveat: mortgage underwriters and UK visa applications generally require unredacted statements — send those in full. For rental referencing and expense claims, a sensibly redacted statement is normal and widely accepted.</p>
+
+    <div class="guide-cta">
+        <p>Ready to share only what you choose to?</p>
+        <a href="/">Redact your HSBC statement &rarr;</a>
+    </div>
+</div>
+''',
+    },
+
 }
