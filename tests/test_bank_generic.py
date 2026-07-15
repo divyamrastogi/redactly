@@ -125,3 +125,70 @@ def test_detect_generic_bank_from_synthetic_pdf(tmp_path):
     build_statement(inp)
     text = fitz.open(str(inp))[0].get_text()
     assert detect_provider(text) == 'generic_bank_uk'
+
+
+def test_matches_date_with_year_suffix():
+    """Revolut-style dates carry the year: '1 May 2026' must count as a row date."""
+    from redact_bank_generic import _matches_date
+    assert _matches_date("1 May 2026")
+    assert _matches_date("28 Jun 2026")
+    assert _matches_date("01 May")            # existing forms still work
+    assert _matches_date("01/05/2026")
+    assert not _matches_date("May 2026")      # month-year alone is not a row date
+    assert not _matches_date("1 May 2026 extra")
+
+
+def test_prose_page_is_never_redacted(tmp_path):
+    """A page of prose that merely MENTIONS label words (balance, credit,
+    'Migration Date') plus an inline DD/MM/YYYY date must not fabricate a
+    header line and must come through byte-identical in text terms.
+    Regression test for the Revolut info-page bug."""
+    inp, out = tmp_path / "prose.pdf", tmp_path / "prose_out.pdf"
+    doc = fitz.open()
+
+    # Page 1: a real transaction table (so the file as a whole is processable).
+    page = doc.new_page()
+    for text, x in [("Date", 50), ("Description", 110), ("Paid out", 340),
+                    ("Paid in", 430), ("Balance", 510)]:
+        page.insert_text((x, 110), text)
+    page.insert_text((50, 140), "01 May")
+    page.insert_text((110, 140), "Tesco")
+    page.insert_text((340, 140), "45.20")
+    page.insert_text((510, 140), "954.80")
+
+    # Page 2: prose that echoes the Revolut migration notice shape. The label
+    # words share ONE baseline (as inline bold segments do in real statements),
+    # which is what fabricated the phantom header line in the original bug.
+    page2 = doc.new_page()
+    same_line = [
+        ("Notes about your balance", 50),          # 'balance'
+        ("and any credit received", 250),          # 'credit' → paid_in
+        ("on the given date", 450),                # 'date'
+    ]
+    for text, x in same_line:
+        page2.insert_text((x, 100), text)
+    dated_line = [
+        ("The Account Migration took place on", 50),
+        ("18/06/2026", 460),                       # sits in the phantom 'date' band
+    ]
+    for text, x in dated_line:
+        page2.insert_text((x, 130), text)
+    page2.insert_text((50, 160), "that date appears on your previous statement of transactions.")
+    prose = [t for t, _ in same_line] + [t for t, _ in dated_line] + [
+        "that date appears on your previous statement of transactions."]
+    doc.save(str(inp))
+    doc.close()
+
+    redact_bank_generic(str(inp), str(out), ["zzz-no-match"])
+
+    res = fitz.open(str(out))
+    # Page 1's transaction was redacted (no keyword matched)...
+    assert "Tesco" not in res[0].get_text()
+    assert "954.80" in res[0].get_text()          # ...but its balance survives.
+    # Page 2 prose is fully intact, including the inline date.
+    after = ' '.join(res[1].get_text().split())
+    before = ' '.join(' '.join(prose).split())
+    for fragment in ["Account Migration took place on", "18/06/2026",
+                     "Notes about your balance", "any credit received"]:
+        assert fragment in after
+    res.close()

@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 # ── Patterns ────────────────────────────────────────────────────────────────
 # Row dates: "1 May" / "01 May" (D MMM), "01/05/2026" (DD/MM/YYYY), "01/05/26"
 DATE_PATTERNS = [
-    re.compile(r'^\d{1,2}\s+[A-Za-z]{3}$'),
+    re.compile(r'^\d{1,2}\s+[A-Za-z]{3}(?:\s+\d{4})?$'),  # "1 May" / "1 May 2026" (Revolut)
     re.compile(r'^\d{1,2}/\d{1,2}/\d{4}$'),
     re.compile(r'^\d{1,2}/\d{1,2}/\d{2}$'),
 ]
@@ -63,13 +63,18 @@ ROW_Y_TOLERANCE = 3
 
 # ── Header / column detection ───────────────────────────────────────────────
 def _header_role(text):
-    """Map a column-header label to a role, or None if it isn't a header label."""
+    """Map a column-header label to a role, or None if it isn't a header label.
+
+    Header labels are short ("Paid out", "Running balance") — prose that merely
+    mentions a label word ("Notes about your balance…") must never qualify, so
+    long/wordy spans are rejected and labels match on word boundaries only.
+    """
     t = text.strip().lower()
-    if not t:
+    if not t or len(t) > 25 or len(t.split()) > 3:
         return None
     for role, labels in ROLE_LABELS:
         for lbl in labels:
-            if lbl in t:
+            if re.search(rf'\b{re.escape(lbl)}\b', t):
                 return role
     return None
 
@@ -108,6 +113,17 @@ def _detect_columns(spans, page_width):
             clusters.append({'y': y, 'items': [(span, role)]})
     clusters.sort(key=lambda c: (-len(c['items']), c['y']))
     header_line = clusters[0]['items']
+
+    # A real transaction-table header has several DISTINCT columns, including a
+    # date column and at least one money column. Anything weaker (prose lines
+    # that happen to echo label words, 2-label summary tables) is rejected and
+    # the page is left untouched rather than redacted on a guess.
+    roles_found = {role for _, role in header_line}
+    if (len(roles_found) < 3 or 'date' not in roles_found
+            or not roles_found & {'paid_in', 'paid_out', 'balance'}):
+        logger.info("No credible transaction header line — leaving page untouched.")
+        return None, None
+
     header_y = min(sp['bbox'][3] for sp, _ in header_line)  # bottom of header text
 
     # Sort header spans by X-centre and split the page into bands at the
