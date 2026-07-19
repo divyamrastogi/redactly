@@ -1,11 +1,15 @@
-from flask import Flask, request, send_file, after_this_request, render_template_string, jsonify
+from flask import Flask, request, send_file, after_this_request, render_template_string, jsonify, abort, redirect, Response
 import os
+import re
 import logging
+from datetime import datetime, timezone
 from redact_transactions import redact_transactions
 from redact_generic import redact_pdf_generic
 from redact_financial_details import redact_barclaycard_with_privacy, redact_amex_with_privacy
 from redact_barclaycard import redact_barclaycard
-from provider_config import get_all_providers
+from redact_bank_generic import redact_bank_generic
+from provider_config import get_all_providers, detect_provider
+import payments
 
 app = Flask(__name__)
 
@@ -32,14 +36,37 @@ def update_usage_counter():
         logger.error(f"Error updating usage counter: {str(e)}")
         return None
 
-HTML_TEMPLATE = '''
-<!DOCTYPE html>
+
+def _iso_now():
+    """ISO-8601 UTC timestamp for demand-signal log lines."""
+    return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
+
+
+def log_unrecognized_upload():
+    """Record that auto-detection could not identify a provider.
+
+    Privacy: never log document content — only an ISO date + the literal 'unknown'.
+    """
+    try:
+        with open('unrecognized_uploads.txt', 'a') as f:
+            f.write(f"{_iso_now()},unknown\n")
+    except Exception as e:
+        logger.error(f"Error writing unrecognized_uploads.txt: {str(e)}")
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Reusable site shell. The homepage and every guide page are assembled from the
+# same segments (_SITE_OPEN … _SITE_END) so they share identical chrome — the
+# header, footer, theme-toggle script, and the full light/dark theme CSS.
+# Page-specific title/meta are injected via Jinja vars in _SITE_OPEN.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_SITE_OPEN = '''<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Redact — Credit Card Statement Privacy Tool</title>
-    <meta name="description" content="Redact your credit card statements privately. Supports AMEX, Barclaycard, Visa, Mastercard and more.">
+    <title>{{ title }}</title>
+    <meta name="description" content="{{ meta_description }}">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;550;600;700&display=swap" rel="stylesheet">
@@ -72,6 +99,8 @@ HTML_TEMPLATE = '''
             --error:          #f87171;
             --error-bg:       rgba(248,113,113,0.08);
             --error-border:   rgba(248,113,113,0.2);
+            --warning:        #f59e0b;
+            --warning-border: rgba(245,158,11,0.28);
             --radius:         10px;
             --radius-lg:      14px;
             --shadow:         0 1px 3px rgba(0,0,0,0.4), 0 4px 16px rgba(0,0,0,0.3);
@@ -96,6 +125,8 @@ HTML_TEMPLATE = '''
             --error:          #dc2626;
             --error-bg:       rgba(220,38,38,0.06);
             --error-border:   rgba(220,38,38,0.2);
+            --warning:        #d97706;
+            --warning-border: rgba(217,119,6,0.26);
             --shadow:         0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.05);
         }
 
@@ -119,6 +150,8 @@ HTML_TEMPLATE = '''
                 --error:          #dc2626;
                 --error-bg:       rgba(220,38,38,0.06);
                 --error-border:   rgba(220,38,38,0.2);
+                --warning:        #d97706;
+                --warning-border: rgba(217,119,6,0.26);
                 --shadow:         0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.05);
             }
         }
@@ -464,6 +497,84 @@ HTML_TEMPLATE = '''
             color: var(--accent);
         }
 
+        /* ── Mode selector (radio cards) ── */
+        .mode-group {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .mode-card {
+            position: relative;
+            display: block;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 11px 14px;
+            cursor: pointer;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+
+        .mode-card input[type="radio"] {
+            position: absolute;
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .mode-card:hover {
+            border-color: var(--border-focus);
+        }
+
+        .mode-card.checked {
+            border-color: var(--accent);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+
+        .mode-title {
+            display: block;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text);
+            letter-spacing: -0.01em;
+        }
+
+        .mode-card.checked .mode-title {
+            color: var(--accent);
+        }
+
+        .mode-desc {
+            display: block;
+            font-size: 11.5px;
+            font-weight: 400;
+            color: var(--text-faint);
+            margin-top: 2px;
+            line-height: 1.45;
+        }
+
+        .mode-explainer {
+            display: none;
+            align-items: flex-start;
+            gap: 10px;
+            background: rgba(139,92,246,0.06);
+            border: 1px solid rgba(139,92,246,0.2);
+            border-radius: var(--radius);
+            padding: 11px 14px;
+            font-size: 12.5px;
+            color: var(--text-muted);
+            line-height: 1.5;
+        }
+
+        .mode-explainer.visible { display: flex; }
+
+        .mode-explainer svg {
+            width: 15px;
+            height: 15px;
+            flex-shrink: 0;
+            margin-top: 1px;
+            color: var(--accent);
+        }
+
         /* ── Drop zone ── */
         .drop-zone {
             position: relative;
@@ -699,6 +810,86 @@ HTML_TEMPLATE = '''
             gap: 6px;
         }
 
+        /* ── Bank-request banner (auto-detection missed) ── */
+        .bank-request-banner {
+            margin-top: 12px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--accent);
+            border-radius: var(--radius);
+            padding: 14px 16px;
+            animation: slide-in 0.2s ease-out;
+        }
+        .bank-request-banner p {
+            font-size: 13px;
+            color: var(--text);
+            margin-bottom: 10px;
+            letter-spacing: -0.01em;
+        }
+        .bank-request-row {
+            display: flex;
+            gap: 8px;
+        }
+        .bank-request-row input {
+            flex: 1;
+            min-width: 0;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            color: var(--text);
+            font-family: inherit;
+            font-size: 13.5px;
+            padding: 9px 13px;
+            outline: none;
+            transition: border-color 0.15s, box-shadow 0.15s;
+        }
+        .bank-request-row input:focus {
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 3px var(--accent-glow);
+        }
+        .bank-request-row input::placeholder { color: var(--text-faint); }
+        .bank-request-row button {
+            padding: 9px 16px;
+            background: var(--accent);
+            color: white;
+            font-family: inherit;
+            font-size: 13px;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+            border: none;
+            border-radius: var(--radius);
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.15s, transform 0.1s;
+        }
+        .bank-request-row button:hover { background: var(--accent-hover); }
+        .bank-request-row button:active { transform: scale(0.98); }
+        .bank-request-row button:disabled { opacity: 0.5; cursor: not-allowed; }
+        .bank-request-done {
+            font-size: 12px;
+            color: var(--success);
+            margin-top: 8px;
+            margin-bottom: 0;
+        }
+
+        /* ── Beta banner (generic bank-statement path) ── */
+        .beta-banner {
+            margin-top: 12px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--warning);
+            border-radius: var(--radius);
+            padding: 12px 16px;
+            animation: slide-in 0.2s ease-out;
+        }
+        .beta-banner p {
+            font-size: 13px;
+            color: var(--text);
+            margin: 0;
+            letter-spacing: -0.01em;
+            line-height: 1.45;
+        }
+
         .result-card {
             display: flex;
             align-items: center;
@@ -789,6 +980,29 @@ HTML_TEMPLATE = '''
             height: 13px;
         }
 
+        /* ── Pay toast (post-purchase redirect) ── */
+        .pay-toast {
+            position: fixed;
+            left: 50%;
+            bottom: 28px;
+            transform: translateX(-50%);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: var(--bg-card);
+            border: 1px solid var(--success-border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow);
+            padding: 12px 18px;
+            font-size: 13px;
+            color: var(--text);
+            z-index: 50;
+            animation: slide-in 0.25s ease-out;
+        }
+        .pay-toast.error { border-color: var(--error-border); }
+        .pay-toast svg { width: 16px; height: 16px; color: var(--success); flex-shrink: 0; }
+        .pay-toast.error svg { color: var(--error); }
+
         /* ── Custom request ── */
         .custom-section {
             margin-bottom: 48px;
@@ -829,6 +1043,164 @@ HTML_TEMPLATE = '''
             text-align: center;
             font-size: 12px;
             color: var(--text-faint);
+        }
+
+        .site-footer a {
+            color: var(--text-muted);
+            text-decoration: none;
+            transition: color 0.15s;
+        }
+
+        .site-footer a:hover {
+            color: var(--text);
+        }
+
+        /* ── Trust cards (homepage) ── */
+        .trust-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 16px;
+            margin-bottom: 28px;
+        }
+
+        @media (max-width: 680px) {
+            .trust-grid { grid-template-columns: 1fr; }
+        }
+
+        .trust-card {
+            padding: 22px;
+        }
+
+        .trust-card .trust-icon {
+            width: 30px;
+            height: 30px;
+            border-radius: 8px;
+            background: var(--accent-glow);
+            border: 1px solid rgba(139,92,246,0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 12px;
+        }
+
+        .trust-card .trust-icon svg {
+            width: 16px;
+            height: 16px;
+            color: var(--accent);
+        }
+
+        .trust-card h3 {
+            font-size: 13.5px;
+            font-weight: 600;
+            color: var(--text);
+            margin-bottom: 8px;
+            letter-spacing: -0.01em;
+        }
+
+        .trust-card p {
+            font-size: 12.5px;
+            color: var(--text-muted);
+            line-height: 1.65;
+        }
+
+        /* ── Guide pages ── */
+        .guide {
+            max-width: 720px;
+            margin: 40px auto 56px;
+        }
+
+        .guide h1 {
+            font-size: clamp(24px, 4vw, 32px);
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            line-height: 1.2;
+            color: var(--text);
+            margin-bottom: 12px;
+        }
+
+        .guide .guide-lead {
+            font-size: 15px;
+            color: var(--text-muted);
+            margin-bottom: 28px;
+            line-height: 1.6;
+        }
+
+        .guide h2 {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text);
+            margin: 28px 0 10px;
+            letter-spacing: -0.01em;
+        }
+
+        .guide p {
+            font-size: 14.5px;
+            color: var(--text-muted);
+            line-height: 1.7;
+            margin-bottom: 14px;
+        }
+
+        .guide ul {
+            list-style: none;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin: 0 0 16px;
+        }
+
+        .guide li {
+            font-size: 14px;
+            color: var(--text-muted);
+            padding-left: 18px;
+            position: relative;
+            line-height: 1.6;
+        }
+
+        .guide li::before {
+            content: '';
+            position: absolute;
+            left: 0;
+            top: 9px;
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: var(--accent);
+        }
+
+        .guide .guide-cta {
+            margin-top: 32px;
+            padding: 20px 24px;
+            background: var(--accent-glow);
+            border: 1px solid rgba(139,92,246,0.25);
+            border-radius: var(--radius-lg);
+            text-align: center;
+        }
+
+        .guide .guide-cta p {
+            color: var(--text);
+            font-size: 14px;
+            margin-bottom: 14px;
+        }
+
+        .guide .guide-cta a {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: var(--accent);
+            color: white;
+            font-family: inherit;
+            font-size: 13.5px;
+            font-weight: 600;
+            letter-spacing: -0.01em;
+            border: none;
+            border-radius: var(--radius);
+            text-decoration: none;
+            transition: background 0.15s;
+        }
+
+        .guide .guide-cta a:hover {
+            background: var(--accent-hover);
         }
 
         /* ── Animations ── */
@@ -884,15 +1256,17 @@ HTML_TEMPLATE = '''
 
     <main style="flex:1;">
         <div class="container">
+'''
 
+_HOMEPAGE_BODY = '''
             <!-- Hero -->
             <section class="hero">
                 <div class="hero-eyebrow">
                     <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
-                    Privacy-first · Runs locally
+                    True redaction · Files deleted after download
                 </div>
-                <h1>Redact your statements<br>in seconds</h1>
-                <p>Upload credit card PDFs, whitelist the transactions you want to keep, and download clean redacted files — ready to share.</p>
+                <h1>Share your statement.<br>Not your whole life.</h1>
+                <p>Landlords and employers only need to see certain transactions. Upload your statement, choose what stays visible, and every other transaction is permanently blacked out — the text underneath is destroyed, not just covered.</p>
             </section>
 
             <!-- Main two-col -->
@@ -901,10 +1275,10 @@ HTML_TEMPLATE = '''
                 <!-- How it works -->
                 <div class="card how-card">
                     <h2>How it works</h2>
-                    <p>Upload one or more credit card statement PDFs, enter keywords for the transactions you want to keep, and download redacted files as they finish.</p>
+                    <p>Upload one or more statement PDFs, choose what should stay visible, and download redacted files as they finish.</p>
                     <ul class="how-list">
                         <li>Multi-file upload — process several months at once</li>
-                        <li>Auto-detects AMEX and Barclaycard formats</li>
+                        <li>Auto-detects AMEX, Barclaycard, and UK bank statement formats</li>
                         <li>Each file is ready to download as soon as it's done</li>
                         <li>Filename shows the whitelisted total for easy reference</li>
                     </ul>
@@ -954,6 +1328,35 @@ HTML_TEMPLATE = '''
                             <ul id="file-list" class="file-list"></ul>
                         </div>
 
+                        <!-- Mode selector -->
+                        <div class="field">
+                            <label>What do you need this for?</label>
+                            <div class="mode-group" id="mode-group">
+                                <label class="mode-card checked" data-mode="custom">
+                                    <input type="radio" name="mode" value="custom" checked>
+                                    <span class="mode-title">Expense claim</span>
+                                    <span class="mode-desc">Keep only transactions matching your keywords.</span>
+                                </label>
+                                <label class="mode-card" data-mode="landlord">
+                                    <input type="radio" name="mode" value="landlord">
+                                    <span class="mode-title">Landlord / rental</span>
+                                    <span class="mode-desc">Keep income, balances, and rent. Hide other spending.</span>
+                                </label>
+                                <label class="mode-card" data-mode="custom">
+                                    <input type="radio" name="mode" value="custom">
+                                    <span class="mode-title">Custom</span>
+                                    <span class="mode-desc">Keep only the transactions you specify.</span>
+                                </label>
+                            </div>
+                            <div id="landlord-explainer" class="mode-explainer">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                                </svg>
+                                <span><strong>Keeps:</strong> money coming in (salary, transfers), your balances, and any transactions you whitelist (e.g. rent). <strong>Hides:</strong> all other spending.</span>
+                            </div>
+                            <span class="hint">Landlord mode is for bank statements — not credit cards</span>
+                        </div>
+
                         <!-- Keywords -->
                         <div class="field">
                             <label>Keywords to keep <span>(comma-separated)</span></label>
@@ -984,6 +1387,37 @@ HTML_TEMPLATE = '''
                 </div>
             </div>
 
+            <!-- Trust -->
+            <section class="trust-grid">
+                <div class="card trust-card">
+                    <div class="trust-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
+                        </svg>
+                    </div>
+                    <h3>True redaction</h3>
+                    <p>We use PDF redaction annotations that destroy the text underneath. Copy-paste and text extraction find nothing — unlike drawing black boxes, which can be reversed.</p>
+                </div>
+                <div class="card trust-card">
+                    <div class="trust-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
+                        </svg>
+                    </div>
+                    <h3>Nothing is kept</h3>
+                    <p>Your statement is processed in memory on our server and the file is deleted immediately after you download it. We never read, store, or log your transactions.</p>
+                </div>
+                <div class="card trust-card">
+                    <div class="trust-icon">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M20 6L9 17l-5-5"/>
+                        </svg>
+                    </div>
+                    <h3>No account needed</h3>
+                    <p>No signup, no email, no tracking of who you are. Upload, redact, download, done.</p>
+                </div>
+            </section>
+
             <!-- Results -->
             <div id="results-section" class="results-section" style="display:none">
                 <p class="results-heading">Redacted files</p>
@@ -998,19 +1432,21 @@ HTML_TEMPLATE = '''
                     <iframe src="https://docs.google.com/forms/d/e/1FAIpQLSd2PkHw7ATLfQYwL0CwdkKOnLynPU6mRweu5Zs5PCkKBeVB1g/viewform?usp=sf_link">Loading…</iframe>
                 </div>
             </div>
+'''
 
+_SITE_MID = '''
         </div>
     </main>
 
     <footer class="site-footer">
         <div class="container">
-            &copy; 2024 Redact. All rights reserved.
+            &copy; 2024 Redact &middot; <a href="/guides">Guides</a> &middot; All rights reserved.
         </div>
     </footer>
 </div>
 
 <script>
-// --- Theme toggle ---
+// --- Theme toggle (shared across homepage + guide pages) ---
 // Reads saved preference; falls back to system default (no class = system)
 (function() {
     const saved = localStorage.getItem('theme');
@@ -1033,22 +1469,82 @@ function toggleTheme() {
         localStorage.setItem('theme', 'dark');
     }
 }
+</script>
+'''
+
+_HOMEPAGE_SCRIPT = '''
+<script>
+// --- Post-purchase toast (redirect target /?pay=success|already|unpaid|error) ---
+(function () {
+    const pay = new URLSearchParams(location.search).get('pay');
+    if (!pay) return;
+    const msg = {
+        success: 'Payment received — your credits have been added.',
+        already: 'This payment was already used.',
+        unpaid:  'Payment is not yet complete.',
+        error:   'We could not verify your payment. Please try again.'
+    }[pay];
+    if (!msg) return;
+    const isError = pay !== 'success';
+    const toast = document.createElement('div');
+    toast.className = 'pay-toast' + (isError ? ' error' : '');
+    toast.innerHTML = `
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            ${isError
+                ? '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>'
+                : '<polyline points="20 6 9 17 4 12"/>'}
+        </svg>
+        <span>${msg}</span>`;
+    document.body.appendChild(toast);
+    history.replaceState(null, '', '/');   // drop ?pay= so a refresh won't re-toast
+    setTimeout(() => toast.remove(), 6000);
+})();
 
 // --- Provider UI ---
+function getSelectedMode() {
+    const checked = document.querySelector('#mode-group input[name="mode"]:checked');
+    return checked ? checked.value : 'custom';
+}
+
+function refreshKeywordPlaceholder() {
+    const kw = document.getElementById('keywords');
+    if (getSelectedMode() === 'landlord') {
+        kw.placeholder = 'rent, letting agent (optional)';
+        return;
+    }
+    const provider = document.getElementById('provider').value;
+    kw.placeholder = (provider === 'barclaycard')
+        ? 'e.g. Tfl Travel, Hyperoptic, Your-Saving'
+        : 'e.g. Office Supplies, Travel, Client Dinner';
+}
+
 function updateProviderUI() {
     const provider = document.getElementById('provider').value;
     const tip = document.getElementById('barclaycard-tip');
-    const kw  = document.getElementById('keywords');
-    if (provider === 'barclaycard') {
-        tip.classList.add('visible');
-        kw.placeholder = 'e.g. Tfl Travel, Hyperoptic, Your-Saving';
-    } else {
-        tip.classList.remove('visible');
-        kw.placeholder = 'e.g. Office Supplies, Travel, Client Dinner';
-    }
+    tip.classList.toggle('visible', provider === 'barclaycard');
+    refreshKeywordPlaceholder();
 }
+
+function applyModeUI() {
+    const mode = getSelectedMode();
+    document.querySelectorAll('#mode-group .mode-card').forEach(card => {
+        card.classList.toggle('checked', card.querySelector('input').checked);
+    });
+    document.getElementById('landlord-explainer').classList.toggle('visible', mode === 'landlord');
+    refreshKeywordPlaceholder();
+}
+
 document.getElementById('provider').addEventListener('change', updateProviderUI);
-document.addEventListener('DOMContentLoaded', updateProviderUI);
+document.querySelectorAll('#mode-group .mode-card input').forEach(input => {
+    input.addEventListener('change', () => {
+        applyModeUI();
+        gtag('event', 'mode_selected', { mode: getSelectedMode() });
+    });
+});
+document.addEventListener('DOMContentLoaded', () => {
+    updateProviderUI();
+    applyModeUI();
+});
 
 // --- File picker ---
 const pdfInput = document.getElementById('pdf-input');
@@ -1101,9 +1597,12 @@ async function processFiles() {
     const keywords = document.getElementById('keywords').value.trim();
     const provider = document.getElementById('provider').value;
     const privacy  = document.getElementById('enhanced_privacy').checked;
+    const mode     = getSelectedMode();
 
     if (!files.length)  { shakeField('drop-zone'); return; }
-    if (!keywords)      { shakeField('keywords'); return; }
+    // Keywords are required unless landlord mode is selected (income/balances
+    // are kept automatically; keywords are optional there).
+    if (mode !== 'landlord' && !keywords) { shakeField('keywords'); return; }
 
     const btn     = document.getElementById('submit-btn');
     const btnText = document.getElementById('btn-text');
@@ -1125,20 +1624,35 @@ async function processFiles() {
             fd.append('pdf', file);
             fd.append('keywords', keywords);
             fd.append('provider', provider);
+            fd.append('mode', mode);
             if (privacy) fd.append('enhanced_privacy', 'on');
 
             const res  = await fetch('/redact', { method: 'POST', body: fd });
             const data = await res.json();
 
-            if (data.error) {
+            // No credits left (payments enabled) — show a paywall card and stop,
+            // since the remaining files would 402 too.
+            if (data.error === 'no_credits') {
+                gtag('event', 'paywall_shown');
+                showPaywall(card, file.name);
+                break;
+            } else if (data.error) {
+                gtag('event', 'redact_error');
                 updateCard(card, 'error', file.name, null, data.error);
             } else {
+                gtag('event', 'redact_success', {
+                    provider: data.provider,
+                    detected: data.provider_detected
+                });
                 const detail = data.kept_count >= 0
                     ? `${data.kept_count} transaction${data.kept_count !== 1 ? 's' : ''} · £${data.total.toFixed(2)}`
                     : `£${data.total.toFixed(2)} total`;
                 updateCard(card, 'success', data.filename, data.download_url, detail);
+                if (data.provider_detected === false) showBankRequestBanner();
+                if (data.beta) showBetaBanner();
             }
         } catch (err) {
+            gtag('event', 'redact_error');
             updateCard(card, 'error', file.name, null, err.message);
         }
         done++;
@@ -1148,6 +1662,82 @@ async function processFiles() {
     btn.disabled = false;
     spinner.classList.remove('visible');
     btnText.textContent = 'Redact PDFs';
+}
+
+function showBankRequestBanner() {
+    const section = document.getElementById('results-section');
+    if (!section || document.getElementById('bank-request-banner')) return;
+
+    const banner = document.createElement('div');
+    banner.className = 'bank-request-banner';
+    banner.id = 'bank-request-banner';
+    banner.innerHTML = `
+        <p>We couldn't confidently detect your bank. Which bank is this statement from?</p>
+        <div class="bank-request-row">
+            <input id="bank-request-input" type="text" placeholder="e.g. Monzo, HSBC, NatWest" maxlength="60">
+            <button id="bank-request-btn" type="button">Submit</button>
+        </div>
+        <p class="bank-request-done" id="bank-request-done" style="display:none">Thanks — that helps us add support.</p>`;
+    section.appendChild(banner);
+
+    const input = document.getElementById('bank-request-input');
+    const btn   = document.getElementById('bank-request-btn');
+    const done  = document.getElementById('bank-request-done');
+
+    async function submit() {
+        const bank = input.value.trim();
+        if (!bank) { input.focus(); return; }
+        btn.disabled = true;
+        btn.textContent = '…';
+        try {
+            await fetch('/bank-request', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ bank })
+            });
+            gtag('event', 'bank_request', { bank });
+            done.style.display = 'block';
+            btn.textContent = 'Submitted';
+            input.disabled = true;
+        } catch (e) {
+            btn.disabled = false;
+            btn.textContent = 'Submit';
+        }
+    }
+
+    btn.addEventListener('click', submit);
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+}
+
+function showBetaBanner() {
+    const section = document.getElementById('results-section');
+    if (!section || document.getElementById('beta-banner')) return;
+    gtag('event', 'bank_beta');
+    const banner = document.createElement('div');
+    banner.className = 'beta-banner';
+    banner.id = 'beta-banner';
+    banner.innerHTML = '<p>Bank statement support is in beta — please check every page of the output before sharing it.</p>';
+    section.appendChild(banner);
+}
+
+function showPaywall(card, filename) {
+    // Shown when /redact returns 402 no_credits (payments enabled).
+    card.className = 'result-card';
+    card.innerHTML = `
+        <div class="result-icon" style="background:rgba(245,158,11,0.12)">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
+            </svg>
+        </div>
+        <div class="result-info">
+            <p class="result-name">${filename}</p>
+            <p class="result-detail">You've used your free document.</p>
+            <p class="result-detail" style="margin-top:6px">£2.99 for one document · £9.99 for five. No account needed.</p>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
+            <a href="/buy?pack=single" class="btn-download" style="background:var(--accent);color:#fff;border-color:var(--accent);justify-content:center;padding:8px 14px">Buy £2.99</a>
+            <a href="/buy?pack=pack5" style="font-size:12px;color:var(--text-muted);text-decoration:underline;text-align:center">5 for £9.99</a>
+        </div>`;
 }
 
 function addPendingCard(filename) {
@@ -1212,12 +1802,38 @@ function shakeField(id) {
     setTimeout(() => { el.style.outline = ''; }, 1200);
 }
 </script>
+'''
+
+_SITE_END = '''
 </body>
 </html>
 '''
 
-def process_single_file(file, keywords, provider, enhanced_privacy):
-    """Process one uploaded PDF. Returns (redacted_path, total, kept_count)."""
+# Homepage template = shared shell + homepage-only body and scripts.
+HTML_TEMPLATE = _SITE_OPEN + _HOMEPAGE_BODY + _SITE_MID + _HOMEPAGE_SCRIPT + _SITE_END
+
+class LandlordCardError(ValueError):
+    """Landlord mode was requested for a credit-card statement.
+
+    Landlord mode (keep income + balances, hide other spending) only makes sense
+    for bank statements; card statements have no income/balance semantics worth
+    keeping, so the /redact endpoint turns this into a friendly 400.
+    """
+
+
+def process_single_file(file, keywords, provider, enhanced_privacy, mode='custom', keep_credits=False):
+    """Process one uploaded PDF.
+
+    Returns (redacted_path, total, kept_count, provider_detected, provider_name, beta)
+    where provider_detected is True if the provider was identified by content or
+    chosen manually, provider_name is the slug reported back to the frontend, and
+    beta is True when the generic bank parser (beta) handled this file.
+
+    ``mode`` is 'custom' (default, current behaviour) or 'landlord' (keep credits
+    + optional keyword whitelist). ``keep_credits`` is forwarded to the bank /
+    barclaycard parsers. Raises ``LandlordCardError`` if landlord mode targets a
+    credit-card statement (amex_uk / barclaycard) — the caller returns a 400.
+    """
     import uuid, fitz as _fitz
 
     tmp_in = f"tmp_in_{uuid.uuid4().hex}.pdf"
@@ -1226,26 +1842,67 @@ def process_single_file(file, keywords, provider, enhanced_privacy):
         base_name = os.path.splitext(file.filename)[0]
         tmp_out   = f"tmp_out_{uuid.uuid4().hex}.pdf"
 
-        # Auto-detect provider from PDF content
         filename_lower = file.filename.lower()
+        provider_detected = True
+        report_provider = provider
+        beta = False
+
+        # Auto-detect provider from PDF content when none was chosen
         if provider == 'auto':
+            detected = None
             try:
                 _doc  = _fitz.open(tmp_in)
-                _text = _doc[0].get_text().lower() if len(_doc) > 0 else ''
+                _text = _doc[0].get_text() if len(_doc) > 0 else ''
                 _doc.close()
-                if 'barclaycard' in _text or 'barclays' in _text or 'mastercard avios' in _text:
-                    provider = 'barclaycard'
+                detected = detect_provider(_text)
+                # Preserve legacy text signal: Barclaycard Avios statements are
+                # routed to the barclaycard path even without the brand word.
+                if detected is None and 'mastercard avios' in _text.lower():
+                    detected = 'barclaycard'
             except Exception:
-                pass
+                detected = None
 
+            if detected is not None:
+                provider = detected
+                report_provider = detected
+                provider_detected = True
+            else:
+                # Unknown provider: record a demand signal (NO document content),
+                # then fall back to the existing AMEX processing path.
+                log_unrecognized_upload()
+                provider = 'amex_uk'        # explicit AMEX fallback for processing
+                report_provider = 'unknown'  # honest report to the frontend
+                provider_detected = False
+
+        # HSBC, Revolut, and Wise are named providers sharing the generic bank parser.
+        is_generic_bank = provider in ('generic_bank_uk', 'hsbc', 'revolut', 'wise')
         is_barclaycard = (
             provider == 'barclaycard' or
             'barclaycard' in filename_lower or
             'barclay' in filename_lower
         )
 
-        if is_barclaycard:
-            redacted_path, total, kept = redact_barclaycard(tmp_in, tmp_out, keywords)
+        # Landlord mode is for bank statements only. Once the provider is resolved
+        # (detected from content or chosen manually), reject credit-card statements
+        # with a friendly 400 — but only when we actually identified the provider
+        # (an undetected statement falls back to the AMEX path and must not be
+        # rejected as a guess).
+        if (mode == 'landlord' and provider_detected
+                and provider in ('amex_uk', 'barclaycard')):
+            raise LandlordCardError(
+                'Landlord mode is for bank statements. For card statements, '
+                'use Expense mode with keywords.'
+            )
+
+        if is_generic_bank:
+            # Generic UK bank statement parser (BETA) — layout-driven.
+            redacted_path, total, kept = redact_bank_generic(
+                tmp_in, tmp_out, keywords, keep_credits=keep_credits)
+            kept_count = len(kept)
+            beta = True
+        elif is_barclaycard:
+            redacted_path, total, kept = redact_barclaycard(
+                tmp_in, tmp_out, keywords, keep_credits=keep_credits)
             kept_count   = len(kept)
         elif enhanced_privacy:
             redacted_path, total = redact_amex_with_privacy(tmp_in, keywords, tmp_out, redact_financial=True)
@@ -1260,7 +1917,7 @@ def process_single_file(file, keywords, provider, enhanced_privacy):
             os.rename(redacted_path, final_name)
             redacted_path = final_name
 
-        return redacted_path, total, kept_count
+        return redacted_path, total, kept_count, provider_detected, report_provider, beta
     finally:
         if os.path.exists(tmp_in):
             os.remove(tmp_in)
@@ -1270,7 +1927,76 @@ def process_single_file(file, keywords, provider, enhanced_privacy):
 def index():
     usage_count = update_usage_counter()
     providers   = get_all_providers()
-    return render_template_string(HTML_TEMPLATE, usage_count=usage_count, providers=providers)
+    return render_template_string(HTML_TEMPLATE,
+        title='Redact Statements — Share Bank & Card Statements Without Oversharing',
+        meta_description='Blackout every transaction on your AMEX or Barclaycard statement except the ones you choose. For rental applications and expense claims. True redaction — text is destroyed, not hidden. Files deleted after download.',
+        usage_count=usage_count,
+        providers=providers)
+
+
+@app.route('/guides/<slug>')
+def guide_page(slug):
+    """Render a single SEO guide page in the shared site shell.
+
+    Guide bodies are plain HTML (no Jinja syntax) sourced from guides.GUIDES.
+    Unknown slugs 404.
+    """
+    from guides import GUIDES
+    guide = GUIDES.get(slug)
+    if guide is None:
+        abort(404)
+    template = _SITE_OPEN + guide['html_body'] + _SITE_MID + _SITE_END
+    return render_template_string(template,
+        title=guide['title'],
+        meta_description=guide['meta_description'])
+
+
+@app.route('/guides')
+def guides_index():
+    """Index of all guides — target of the footer link, aids internal linking."""
+    from guides import GUIDES
+    items = ''.join(
+        f'<li style="margin-bottom:14px"><a href="/guides/{slug}">{g["title"]}</a>'
+        f'<br><span style="color:var(--text-muted)">{g["meta_description"]}</span></li>'
+        for slug, g in GUIDES.items()
+    )
+    body = (
+        '<article class="guide"><h1>Guides</h1>'
+        '<p>Practical, honest guides to sharing financial documents without oversharing.</p>'
+        f'<ul style="list-style:none;padding:0;margin-top:24px">{items}</ul></article>'
+    )
+    template = _SITE_OPEN + body + _SITE_MID + _SITE_END
+    return render_template_string(template,
+        title='Guides — Redact Statements',
+        meta_description='Guides to redacting bank and card statements for rental applications and expense claims.')
+
+
+def _base_url():
+    """Canonical site root for absolute URLs (sitemap/robots). Env-configurable."""
+    return os.environ.get('BASE_URL', 'https://pdf-redact.onrender.com').rstrip('/')
+
+
+@app.route('/sitemap.xml')
+def sitemap():
+    """XML sitemap: homepage + every guide. Absolute URLs from BASE_URL."""
+    from guides import GUIDES
+    from xml.sax.saxutils import escape
+    urls = [_base_url() + '/'] + [_base_url() + '/guides/' + slug for slug in GUIDES]
+    lines = ['<?xml version="1.0" encoding="UTF-8"?>',
+             '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
+    for url in urls:
+        lines.append('  <url>')
+        lines.append('    <loc>' + escape(url) + '</loc>')
+        lines.append('  </url>')
+    lines.append('</urlset>')
+    return Response('\n'.join(lines) + '\n', mimetype='application/xml')
+
+
+@app.route('/robots.txt')
+def robots():
+    """Allow all crawlers + point at the sitemap."""
+    body = 'User-agent: *\nAllow: /\n\nSitemap: ' + _base_url() + '/sitemap.xml\n'
+    return Response(body, mimetype='text/plain')
 
 
 @app.route('/redact', methods=['POST'])
@@ -1285,21 +2011,51 @@ def redact_endpoint():
     keywords = [k.strip() for k in request.form.get('keywords', '').split(',') if k.strip()]
     provider = request.form.get('provider', 'auto')
     enhanced = request.form.get('enhanced_privacy') == 'on'
+    mode     = request.form.get('mode', 'custom')
+    is_landlord = (mode == 'landlord')
 
     if not file.filename:
         return jsonify({'error': 'Empty filename'}), 400
-    if not keywords:
+    # Keywords are required in custom/expense mode. In landlord mode they are
+    # optional (the user may keep only income + balances).
+    if not is_landlord and not keywords:
         return jsonify({'error': 'No keywords provided'}), 400
 
+    # --- Payments (Phase 4): gate on credits BEFORE doing any work. ----------
+    # When payments are OFF this whole block is skipped — no cookie read, no
+    # decrement — so the free, unlimited behaviour is unchanged.
+    enabled = payments.payments_enabled()
+    credits = None
+    if enabled:
+        credits = payments.get_credits(request)
+        if credits is None:
+            # First document free: a brand-new visitor starts with one credit.
+            credits = payments.FREE_CREDITS
+        if credits <= 0:
+            return jsonify({'error': 'no_credits', 'buy_url': '/buy'}), 402
+
     try:
-        redacted_path, total, kept_count = process_single_file(file, keywords, provider, enhanced)
+        redacted_path, total, kept_count, provider_detected, detected_provider, beta = process_single_file(
+            file, keywords, provider, enhanced,
+            mode=mode, keep_credits=is_landlord
+        )
         display_name = os.path.basename(redacted_path)
-        return jsonify({
-            'filename':     display_name,
-            'download_url': f'/download/{redacted_path}',
-            'total':        total,
-            'kept_count':   kept_count,
+        resp = jsonify({
+            'filename':         display_name,
+            'download_url':     f'/download/{redacted_path}',
+            'total':            total,
+            'kept_count':       kept_count,
+            'provider_detected': provider_detected,
+            'provider':         detected_provider,
+            'beta':             bool(beta),
         })
+        # Spend one credit only after a successful redaction (never on failure).
+        if enabled:
+            payments.set_credits_cookie(resp, max(credits - 1, 0))
+        return resp
+    except LandlordCardError as e:
+        # Friendly 400: landlord mode doesn't apply to credit-card statements.
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
         logger.error(f"Redact error: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
@@ -1316,6 +2072,159 @@ def download_file(filename):
         return response
 
     return send_file(filename, as_attachment=True)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Payments (Phase 4, Task 4.1). Every route below 404s unless payments are
+# enabled, so the disabled (today's production) state exposes none of them.
+# ─────────────────────────────────────────────────────────────────────────────
+
+@app.route('/buy', methods=['GET'])
+def buy():
+    """Create a Stripe Checkout Session for ?pack=single|pack5 and redirect to it."""
+    if not payments.payments_enabled():
+        abort(404)
+    pack = request.args.get('pack', 'single')
+    if pack not in payments.PACK_CREDITS:
+        return jsonify({'error': 'unknown pack'}), 400
+    try:
+        session = payments.create_checkout_session(pack)
+    except Exception as e:
+        logger.error(f"Stripe create session error: {e}", exc_info=True)
+        return jsonify({'error': 'checkout failed'}), 502
+    return redirect(session.url)
+
+
+@app.route('/paid', methods=['GET'])
+def paid():
+    """Stripe success redirect: verify paid + not-yet-consumed, then grant credits.
+
+    Query: ``session_id``. Credit granting happens here; the webhook is only the
+    audit trail. Idempotent — a session grants credits at most once.
+    """
+    if not payments.payments_enabled():
+        abort(404)
+    session_id = request.args.get('session_id')
+    if not session_id:
+        abort(400)
+    try:
+        session = payments.retrieve_session(session_id)
+    except Exception as e:
+        logger.error(f"Stripe retrieve session error: {e}", exc_info=True)
+        return redirect('/?pay=error')
+
+    payment_status = (session.get('payment_status')
+                      if isinstance(session, dict)
+                      else getattr(session, 'payment_status', None))
+    if payment_status != 'paid':
+        return redirect('/?pay=unpaid')
+
+    # claim_session atomically checks-and-marks; False means already granted.
+    if not payments.claim_session(session_id):
+        return redirect('/?pay=already')
+
+    grant = payments.credits_for_session(session)
+    current = payments.get_credits(request)
+    if current is None:
+        current = 0
+    resp = redirect('/?pay=success')
+    payments.set_credits_cookie(resp, current + grant)
+    return resp
+
+
+@app.route('/stripe-webhook', methods=['POST'])
+def stripe_webhook():
+    """Stripe webhook: verify signature, log completed sessions (audit only).
+
+    Cookie granting happens on ``/paid``; this endpoint only records that a
+    checkout completed — session id + amount, never statement content.
+    """
+    if not payments.payments_enabled():
+        abort(404)
+    signature = request.headers.get('Stripe-Signature', '')
+    try:
+        event = payments.verify_webhook(request.get_data(), signature)
+    except Exception as e:
+        logger.warning(f"Stripe webhook signature verification failed: {e}")
+        return jsonify({'error': 'invalid signature'}), 400
+
+    # event may be a plain dict (tests) or a stripe StripeObject (production);
+    # both support the field names used below.
+    event_type = event.get('type') if isinstance(event, dict) else getattr(event, 'type', None)
+    if event_type != 'checkout.session.completed':
+        return jsonify({'received': True})
+
+    data = event.get('data') if isinstance(event, dict) else getattr(event, 'data', None)
+    obj = (data.get('object') if isinstance(data, dict)
+           else getattr(data, 'object', None)) or {}
+    sid = obj.get('id', '') if isinstance(obj, dict) else getattr(obj, 'id', '')
+    amount = (obj.get('amount_total') if isinstance(obj, dict)
+              else getattr(obj, 'amount_total', None))
+    try:
+        with open('payments_log.txt', 'a') as f:
+            amt = '' if amount is None else f',{amount}'
+            f.write(f"{_iso_now()},{sid}{amt}\n")
+    except Exception as e:
+        logger.error(f"Error writing payments_log.txt: {e}")
+    return jsonify({'received': True})
+
+
+@app.route('/bank-request', methods=['POST'])
+def bank_request():
+    """Capture a user-typed bank name when auto-detection fails.
+
+    Privacy: store only a sanitized bank name + ISO date — never statement content.
+    """
+    data = request.get_json(silent=True) or {}
+    raw = str(data.get('bank') or '').strip()
+    # Sanitize: alphanumeric + spaces only, capped at 60 chars
+    clean = re.sub(r'[^A-Za-z0-9 ]', '', raw)[:60].strip()
+    if not clean:
+        return jsonify({'error': 'empty bank name'}), 400
+    try:
+        with open('bank_requests.txt', 'a') as f:
+            f.write(f"{_iso_now()},{clean}\n")
+    except Exception as e:
+        logger.error(f"Error writing bank_requests.txt: {str(e)}")
+        return jsonify({'error': 'storage failure'}), 500
+    return jsonify({'ok': True})
+
+
+@app.route('/stats', methods=['GET'])
+def stats():
+    """Token-gated demand-signal stats. 404 unless STATS_TOKEN env matches."""
+    import hmac
+    expected = os.environ.get('STATS_TOKEN')
+    if not expected or not hmac.compare_digest(request.args.get('token', ''), expected):
+        abort(404)
+
+    # Usage counter value
+    try:
+        with open('usage_counter.txt') as f:
+            usage_count = int((f.read() or '0').strip())
+    except Exception:
+        usage_count = 0
+
+    # Unrecognized-upload line count
+    try:
+        with open('unrecognized_uploads.txt') as f:
+            unrecognized_uploads = sum(1 for line in f if line.strip())
+    except Exception:
+        unrecognized_uploads = 0
+
+    # Tail-20 of bank requests
+    try:
+        with open('bank_requests.txt') as f:
+            bank_requests = [line.strip() for line in f if line.strip()][-20:]
+    except Exception:
+        bank_requests = []
+
+    return jsonify({
+        'usage_count': usage_count,
+        'unrecognized_uploads': unrecognized_uploads,
+        'bank_requests_tail': bank_requests,
+    })
+
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)

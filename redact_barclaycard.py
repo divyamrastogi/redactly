@@ -219,11 +219,15 @@ def group_transactions(page):
 
                 merchant_text = " ".join(s["text"] for s in merch_spans).strip()
                 amount_val    = float(amount_span["text"].replace("£","").replace(",","").replace("CR","")) if amount_span else None
+                # A credit (refund / money in) is a CR-suffixed amount — the same
+                # marker commit 9408e1f taught the parser to tolerate.
+                is_credit     = bool(amount_span and amount_span["text"].strip().upper().endswith("CR"))
 
                 transactions.append({
                     "date":            date_span["text"],
                     "merchant":        merchant_text,
                     "amount":          amount_val,
+                    "is_credit":       is_credit,
                     "date_bbox":       fitz.Rect(date_span["bbox"]),
                     "merchant_bboxes": [fitz.Rect(s["bbox"]) for s in merch_spans],
                     "amount_bbox":     fitz.Rect(amount_span["bbox"]) if amount_span else None,
@@ -341,10 +345,13 @@ def redact_financial_summary(doc):
         page.apply_redactions()
 
 
-def redact_barclaycard(input_path, output_path, keep_keywords):
+def redact_barclaycard(input_path, output_path, keep_keywords, keep_credits=False):
     """
     Redact all transactions from a BarclayCard statement that don't match keep_keywords.
     Adds a sum total annotation for the kept transactions.
+
+    When ``keep_credits`` is True, credit rows (CR-suffixed refunds / money in)
+    are kept in addition to keyword matches.
     """
     doc  = fitz.open(input_path)
     kept = []
@@ -360,7 +367,8 @@ def redact_barclaycard(input_path, output_path, keep_keywords):
 
         for tx in transactions:
             merchant = tx["merchant"]
-            is_kept  = any(kw.lower() in merchant.lower() for kw in keep_keywords)
+            is_kept  = (any(kw.lower() in merchant.lower() for kw in keep_keywords)
+                        or (keep_credits and tx.get("is_credit")))
 
             if is_kept:
                 amt_str = f"£{tx['amount']:.2f}" if tx['amount'] is not None else "£?.??"

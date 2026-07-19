@@ -356,7 +356,8 @@ def redact_pdf_generic(file_path: str, keep_keywords: List[str],
     if provider == 'auto':
         # Get text from first page for detection
         first_page_text = doc[0].get_text() if len(doc) > 0 else ""
-        provider = detect_provider(first_page_text)
+        # detect_provider returns None for unknown; preserve AMEX fallback here
+        provider = detect_provider(first_page_text) or 'amex_uk'
         logger.info(f"Auto-detected provider: {provider}")
     
     # Get provider configuration for date/amount patterns
