@@ -37,6 +37,20 @@ def update_usage_counter():
         return None
 
 
+@app.before_request
+def _canonical_host_redirect():
+    """301 alias hosts to the canonical domain (from BASE_URL).
+
+    Only ever redirects KNOWN aliases — localhost, previews, and the canonical
+    host itself pass through untouched.
+    """
+    alias_hosts = {'redactpdf.javascriptbit.com', 'pdf-redact.onrender.com'}
+    if request.host in alias_hosts:
+        base = os.environ.get('BASE_URL', 'https://redact.javascriptbit.com').rstrip('/')
+        from flask import redirect as _redirect
+        return _redirect(base + request.full_path.rstrip('?'), code=301)
+
+
 def _iso_now():
     """ISO-8601 UTC timestamp for demand-signal log lines."""
     return datetime.now(timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')
@@ -1425,7 +1439,7 @@ _HOMEPAGE_BODY = '''
             </div>
 
             <!-- Custom request -->
-            <div class="card custom-section" style="padding:28px">
+            <div class="card custom-section" id="custom-request" style="padding:28px">
                 <h2>Need a custom solution?</h2>
                 <p>Get in touch if you need a tailored redaction workflow for your business or use case.</p>
                 <div class="iframe-wrap">
@@ -1474,6 +1488,48 @@ function toggleTheme() {
 
 _HOMEPAGE_SCRIPT = '''
 <script>
+// --- Privacy-safe analytics wrappers (chokepoint + total banding) ---
+// track() funnels every analytics event through a single function and no-ops if
+// gtag is blocked (ad blocker) or never loaded, so a missing tracker never
+// throws. bandTotal() collapses an exact £ amount into a coarse band BEFORE it
+// reaches Google Analytics.
+// Hard privacy rule: never pass statement content, keywords, filenames, or
+// exact monetary values to either helper — provider slugs, counts, and bands only.
+function track(event, params) {
+    if (typeof gtag !== 'function') return;
+    try {
+        gtag('event', event, params || {});
+    } catch (e) {
+        /* gtag unavailable — analytics is best-effort, never fatal */
+    }
+}
+
+function bandTotal(pounds) {
+    if (typeof pounds !== 'number' || isNaN(pounds) || pounds < 0) return 'unknown';
+    if (pounds <= 10)   return '0-10';
+    if (pounds <= 50)   return '11-50';
+    if (pounds <= 250)  return '51-250';
+    if (pounds <= 1000) return '251-1000';
+    return '1000+';
+}
+
+// Collapse varied exception strings into a few categorical error types, so
+// raw error messages (which can echo filenames) never reach analytics.
+function categorizeError(message) {
+    const m = (message || '').toLowerCase();
+    if (m.includes('no transactions') || m.includes('nothing to redact'))
+        return 'no_transactions';
+    if (m.includes('parse') || m.includes('format'))
+        return 'parse_failed';
+    if (m.includes('no file') || m.includes('empty filename'))
+        return 'no_file';
+    if (m.includes('landlord mode'))
+        return 'landlord_on_card';
+    if (m.includes('no_credits'))
+        return 'no_credits';
+    return 'server_error';
+}
+
 // --- Post-purchase toast (redirect target /?pay=success|already|unpaid|error) ---
 (function () {
     const pay = new URLSearchParams(location.search).get('pay');
@@ -1538,7 +1594,7 @@ document.getElementById('provider').addEventListener('change', updateProviderUI)
 document.querySelectorAll('#mode-group .mode-card input').forEach(input => {
     input.addEventListener('change', () => {
         applyModeUI();
-        gtag('event', 'mode_selected', { mode: getSelectedMode() });
+        track('mode_selected', { mode: getSelectedMode() });
     });
 });
 document.addEventListener('DOMContentLoaded', () => {
@@ -1633,16 +1689,20 @@ async function processFiles() {
             // No credits left (payments enabled) — show a paywall card and stop,
             // since the remaining files would 402 too.
             if (data.error === 'no_credits') {
-                gtag('event', 'paywall_shown');
+                track('paywall_shown');
                 showPaywall(card, file.name);
                 break;
             } else if (data.error) {
-                gtag('event', 'redact_error');
+                track('redact_error', { error_type: categorizeError(data.error) });
                 updateCard(card, 'error', file.name, null, data.error);
             } else {
-                gtag('event', 'redact_success', {
+                track('redact_success', {
                     provider: data.provider,
-                    detected: data.provider_detected
+                    detected: data.provider_detected,
+                    // Banded total + kept-count only: never the exact amount or
+                    // any keyword/merchant/filename content.
+                    total_band: bandTotal(data.total),
+                    kept_count: data.kept_count
                 });
                 const detail = data.kept_count >= 0
                     ? `${data.kept_count} transaction${data.kept_count !== 1 ? 's' : ''} · £${data.total.toFixed(2)}`
@@ -1652,7 +1712,7 @@ async function processFiles() {
                 if (data.beta) showBetaBanner();
             }
         } catch (err) {
-            gtag('event', 'redact_error');
+            track('redact_error', { error_type: categorizeError(err.message) });
             updateCard(card, 'error', file.name, null, err.message);
         }
         done++;
@@ -1695,7 +1755,8 @@ function showBankRequestBanner() {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ bank })
             });
-            gtag('event', 'bank_request', { bank });
+            // Count only — the typed bank name goes to our own server log, not GA.
+            track('bank_request');
             done.style.display = 'block';
             btn.textContent = 'Submitted';
             input.disabled = true;
@@ -1712,7 +1773,7 @@ function showBankRequestBanner() {
 function showBetaBanner() {
     const section = document.getElementById('results-section');
     if (!section || document.getElementById('beta-banner')) return;
-    gtag('event', 'bank_beta');
+    track('bank_beta');
     const banner = document.createElement('div');
     banner.className = 'beta-banner';
     banner.id = 'beta-banner';
