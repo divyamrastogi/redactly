@@ -134,3 +134,28 @@ def test_structured_data_on_homepage_and_guides():
     assert '"@type": "WebApplication"' in home
     guide = client.get('/guides/do-landlords-accept-redacted-bank-statements').get_data(as_text=True)
     assert '"@type": "Article"' in guide
+
+
+# --- Technical SEO (canonical, social, headers, sitemap) ----------------------
+
+def test_canonical_and_social_tags():
+    client = app.test_client()
+    home = client.get('/').get_data(as_text=True)
+    assert '<link rel="canonical" href="https://pdf-redact.onrender.com/">' in home or 'rel="canonical"' in home
+    assert 'property="og:title"' in home and 'name="twitter:card"' in home
+    assert 'rel="icon"' in home
+    guide = client.get('/guides/redact-hsbc-statement').get_data(as_text=True)
+    assert '/guides/redact-hsbc-statement">' in guide.split('rel="canonical"')[1][:120]
+    assert '<meta property="og:type" content="article">' in guide
+
+
+def test_security_headers_present():
+    resp = app.test_client().get('/robots.txt')
+    assert 'max-age=31536000' in resp.headers.get('Strict-Transport-Security', '')
+    assert resp.headers.get('X-Content-Type-Options') == 'nosniff'
+
+
+def test_sitemap_has_lastmod_and_guides_index():
+    body = app.test_client().get('/sitemap.xml').get_data(as_text=True)
+    assert body.count('<lastmod>') == body.count('<loc>')
+    assert '/guides</loc>' in body
