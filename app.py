@@ -37,6 +37,18 @@ def update_usage_counter():
         return None
 
 
+# Content changes ship via deploys, so process start date is an honest lastmod.
+_DEPLOY_DATE = datetime.now(timezone.utc).strftime('%Y-%m-%d')
+
+
+@app.after_request
+def _security_headers(response):
+    response.headers.setdefault('Strict-Transport-Security',
+                                'max-age=31536000; includeSubDomains')
+    response.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    return response
+
+
 @app.before_request
 def _canonical_host_redirect():
     """301 alias hosts to the canonical domain (from BASE_URL).
@@ -81,6 +93,16 @@ _SITE_OPEN = '''<!DOCTYPE html>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{{ title }}</title>
     <meta name="description" content="{{ meta_description }}">
+    {% if canonical %}<link rel="canonical" href="{{ canonical }}">{% endif %}
+    <meta property="og:site_name" content="Redact Statements">
+    <meta property="og:title" content="{{ title }}">
+    <meta property="og:description" content="{{ meta_description }}">
+    <meta property="og:type" content="{{ og_type or 'website' }}">
+    {% if canonical %}<meta property="og:url" content="{{ canonical }}">{% endif %}
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="{{ title }}">
+    <meta name="twitter:description" content="{{ meta_description }}">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%238b5cf6'/%3E%3Crect x='8' y='10' width='16' height='3' rx='1.5' fill='white'/%3E%3Crect x='8' y='16' width='10' height='3' rx='1.5' fill='white' opacity='0.55'/%3E%3Crect x='8' y='22' width='13' height='3' rx='1.5' fill='black' opacity='0.85'/%3E%3C/svg%3E">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;550;600;700&display=swap" rel="stylesheet">
@@ -2002,6 +2024,7 @@ def index():
     return render_template_string(HTML_TEMPLATE,
         title='Redact Statements — Share Bank & Card Statements Without Oversharing',
         meta_description='Blackout every transaction on your AMEX or Barclaycard statement except the ones you choose. For rental applications and expense claims. True redaction — text is destroyed, not hidden. Files deleted after download.',
+        canonical=_base_url() + '/',
         usage_count=usage_count,
         providers=providers)
 
@@ -2030,7 +2053,9 @@ def guide_page(slug):
     template = _SITE_OPEN + jsonld + guide['html_body'] + _SITE_MID + _SITE_END
     return render_template_string(template,
         title=guide['title'],
-        meta_description=guide['meta_description'])
+        meta_description=guide['meta_description'],
+        canonical=_base_url() + '/guides/' + slug,
+        og_type='article')
 
 
 @app.route('/guides')
@@ -2050,7 +2075,8 @@ def guides_index():
     template = _SITE_OPEN + body + _SITE_MID + _SITE_END
     return render_template_string(template,
         title='Guides — Redact Statements',
-        meta_description='Guides to redacting bank and card statements for rental applications and expense claims.')
+        meta_description='Guides to redacting bank and card statements for rental applications and expense claims.',
+        canonical=_base_url() + '/guides')
 
 
 def _base_url():
@@ -2063,12 +2089,15 @@ def sitemap():
     """XML sitemap: homepage + every guide. Absolute URLs from BASE_URL."""
     from guides import GUIDES
     from xml.sax.saxutils import escape
-    urls = [_base_url() + '/'] + [_base_url() + '/guides/' + slug for slug in GUIDES]
+    urls = ([_base_url() + '/', _base_url() + '/guides']
+            + [_base_url() + '/guides/' + slug for slug in GUIDES])
+    lastmod = _DEPLOY_DATE
     lines = ['<?xml version="1.0" encoding="UTF-8"?>',
              '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">']
     for url in urls:
         lines.append('  <url>')
         lines.append('    <loc>' + escape(url) + '</loc>')
+        lines.append('    <lastmod>' + lastmod + '</lastmod>')
         lines.append('  </url>')
     lines.append('</urlset>')
     return Response('\n'.join(lines) + '\n', mimetype='application/xml')
