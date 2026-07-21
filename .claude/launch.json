@@ -1,0 +1,12 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "pdf-redact",
+      "runtimeExecutable": "/Users/deeksharastogi/projects/pdf-redact/venv/bin/python",
+      "runtimeArgs": ["app.py"],
+      "port": 5001,
+      "autoPort": true
+    }
+  ]
+}
