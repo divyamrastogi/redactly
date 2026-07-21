@@ -105,3 +105,32 @@ def test_homepage_has_repositioned_copy(client):
     # Trust section headings present.
     assert 'Nothing is kept' in body
     assert 'No account needed' in body
+
+
+# --- LLM/AI discoverability ---------------------------------------------------
+
+def test_llms_txt_serves_summary_with_all_guides():
+    client = app.test_client()
+    resp = client.get('/llms.txt')
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert '# Redact Statements' in body
+    assert 'true' in body.lower() and 'redaction' in body.lower()
+    for slug in GUIDES:
+        assert f'/guides/{slug}' in body
+    # Honest limits stated for AI answers too.
+    assert 'visa' in body.lower() and 'mortgage' in body.lower()
+
+
+def test_robots_allows_ai_crawlers():
+    body = app.test_client().get('/robots.txt').get_data(as_text=True)
+    for bot in ('GPTBot', 'ClaudeBot', 'PerplexityBot', 'Google-Extended'):
+        assert f'User-agent: {bot}' in body
+
+
+def test_structured_data_on_homepage_and_guides():
+    client = app.test_client()
+    home = client.get('/').get_data(as_text=True)
+    assert '"@type": "WebApplication"' in home
+    guide = client.get('/guides/do-landlords-accept-redacted-bank-statements').get_data(as_text=True)
+    assert '"@type": "Article"' in guide

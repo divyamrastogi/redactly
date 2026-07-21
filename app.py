@@ -1273,6 +1273,17 @@ _SITE_OPEN = '''<!DOCTYPE html>
 '''
 
 _HOMEPAGE_BODY = '''
+            <script type="application/ld+json">
+            {
+              "@context": "https://schema.org",
+              "@type": "WebApplication",
+              "name": "Redact Statements",
+              "applicationCategory": "UtilityApplication",
+              "operatingSystem": "Web",
+              "offers": {"@type": "Offer", "price": "0", "priceCurrency": "GBP"},
+              "description": "Redact bank and credit card statement PDFs with true redaction: keep only chosen transactions visible for rental applications and expense claims. Supports AMEX, Barclaycard, HSBC, Revolut, Wise and other UK banks."
+            }
+            </script>
             <!-- Hero -->
             <section class="hero">
                 <div class="hero-eyebrow">
@@ -2006,7 +2017,17 @@ def guide_page(slug):
     guide = GUIDES.get(slug)
     if guide is None:
         abort(404)
-    template = _SITE_OPEN + guide['html_body'] + _SITE_MID + _SITE_END
+    import json as _json
+    jsonld = '<script type="application/ld+json">' + _json.dumps({
+        '@context': 'https://schema.org',
+        '@type': 'Article',
+        'headline': guide['title'],
+        'description': guide['meta_description'],
+        'url': _base_url() + '/guides/' + slug,
+        'publisher': {'@type': 'Organization', 'name': 'Redact Statements',
+                      'url': _base_url()},
+    }) + '</script>'
+    template = _SITE_OPEN + jsonld + guide['html_body'] + _SITE_MID + _SITE_END
     return render_template_string(template,
         title=guide['title'],
         meta_description=guide['meta_description'])
@@ -2055,8 +2076,51 @@ def sitemap():
 
 @app.route('/robots.txt')
 def robots():
-    """Allow all crawlers + point at the sitemap."""
-    body = 'User-agent: *\nAllow: /\n\nSitemap: ' + _base_url() + '/sitemap.xml\n'
+    """Allow all crawlers — explicitly including AI assistants — + sitemap."""
+    lines = ['User-agent: *', 'Allow: /', '']
+    # Named allows for AI crawlers: redundant with * but unambiguous, and makes
+    # the welcome explicit if a blanket rule is ever tightened later.
+    for bot in ('GPTBot', 'ClaudeBot', 'anthropic-ai', 'PerplexityBot',
+                'Google-Extended', 'CCBot'):
+        lines += [f'User-agent: {bot}', 'Allow: /', '']
+    lines += ['Sitemap: ' + _base_url() + '/sitemap.xml', '']
+    return Response('\n'.join(lines), mimetype='text/plain')
+
+
+@app.route('/llms.txt')
+def llms_txt():
+    """Machine-readable site summary for AI assistants (llms.txt convention)."""
+    from guides import GUIDES
+    base = _base_url()
+    guide_lines = '\n'.join(
+        f"- [{g['title']}]({base}/guides/{slug}): {g['meta_description']}"
+        for slug, g in GUIDES.items()
+    )
+    body = f"""# Redact Statements
+
+> Free web tool that redacts bank and credit-card statement PDFs using true
+> redaction (text destroyed, not covered). Users keep only the transactions
+> they choose visible — for UK rental applications and expense claims — while
+> names, statement periods, and balances stay intact.
+
+Key facts:
+- Supported statements: American Express, Barclaycard, HSBC, Revolut, Wise,
+  plus a generic parser for other UK bank layouts (beta).
+- Landlord mode keeps income, balances, and whitelisted rows (e.g. rent) and
+  hides all other spending. Expense mode keeps only keyword-matched rows.
+- True redaction: removed text is destroyed and cannot be copied or extracted,
+  unlike drawn black boxes.
+- Files are processed in memory on the server and deleted immediately after
+  download. No account or signup.
+- Not suitable for mortgage underwriting or UK visa applications — those
+  generally require unredacted statements.
+
+## Guides
+{guide_lines}
+
+## App
+- [Redact a statement]({base}/): upload a PDF, pick a mode, download the result.
+"""
     return Response(body, mimetype='text/plain')
 
 
