@@ -261,8 +261,11 @@ _SITE_OPEN = '''<!DOCTYPE html>
         /* ── Hero (split) ── */
         .hero-split {
             display: grid; grid-template-columns: 1fr 1fr; gap: 44px;
-            padding: 56px 0; align-items: center;
+            padding: 56px 0; align-items: start;
         }
+        /* keep the hero copy optically centred against the taller tool card
+           without re-centring (which would jump) when the card changes height */
+        .hero-copy { padding-top: 24px; }
         .hero-badge {
             display: inline-flex; align-items: center; gap: 7px;
             font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
@@ -379,11 +382,22 @@ _SITE_OPEN = '''<!DOCTYPE html>
 
         /* ── Inline explainers / tips ── */
         .provider-tip, .mode-explainer {
-            display: none; align-items: flex-start; gap: 9px; margin-top: 10px;
+            display: flex; align-items: flex-start; gap: 9px;
             font-size: 12px; color: var(--text-muted); line-height: 1.55;
-            background: var(--tint); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
+            background: var(--tint); border: 1px solid var(--border); border-radius: 10px;
+            /* collapsed by default — reveal is animated, not a snap, so the card
+               grows smoothly instead of shifting the page in one jump */
+            max-height: 0; opacity: 0; margin-top: 0; padding: 0 12px; border-width: 0 1px;
+            overflow: hidden;
+            transition: max-height .24s ease, opacity .2s ease, margin-top .24s ease,
+                        padding .24s ease, border-width .24s ease;
         }
-        .provider-tip.visible, .mode-explainer.visible { display: flex; }
+        .provider-tip.visible, .mode-explainer.visible {
+            max-height: 150px; opacity: 1; margin-top: 10px; padding: 10px 12px; border-width: 1px;
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .provider-tip, .mode-explainer { transition: none; }
+        }
         .provider-tip svg, .mode-explainer svg { width: 15px; height: 15px; color: var(--accent); flex-shrink: 0; margin-top: 1px; }
         .provider-tip strong, .mode-explainer strong { color: var(--text); font-weight: 600; }
 
