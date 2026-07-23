@@ -29,7 +29,7 @@ _STRIPE_VARS = (
     'STRIPE_SECRET_KEY',
     'STRIPE_WEBHOOK_SECRET',
     'STRIPE_PRICE_SINGLE',
-    'STRIPE_PRICE_PACK5',
+    'STRIPE_PRICE_PACK10',
 )
 
 
@@ -39,7 +39,7 @@ def _enable_payments(monkeypatch):
     monkeypatch.setenv('STRIPE_SECRET_KEY', 'sk_test_fake')
     monkeypatch.setenv('STRIPE_WEBHOOK_SECRET', 'whsec_fake')
     monkeypatch.setenv('STRIPE_PRICE_SINGLE', 'price_single_fake')
-    monkeypatch.setenv('STRIPE_PRICE_PACK5', 'price_pack5_fake')
+    monkeypatch.setenv('STRIPE_PRICE_PACK10', 'price_pack10_fake')
     monkeypatch.setenv('SECRET_KEY', 'test-secret-key-secure')
 
 
@@ -162,7 +162,7 @@ def test_paid_grants_credits_once_only(monkeypatch, tmp_path):
     monkeypatch.setattr(payments, 'CONSUMED_SESSIONS_FILE', str(tmp_path / 'consumed.txt'))
 
     fake_session = types.SimpleNamespace(
-        payment_status='paid', metadata={'pack': 'pack5'})
+        payment_status='paid', metadata={'pack': 'pack10'})
     monkeypatch.setattr(payments, 'retrieve_session', lambda sid: fake_session)
 
     client = app.test_client()
@@ -172,7 +172,7 @@ def test_paid_grants_credits_once_only(monkeypatch, tmp_path):
     assert 'pay=success' in r1.headers['Location']
     token1 = _cookie_value(r1, payments.COOKIE_NAME)
     assert token1 is not None
-    assert payments._serializer().loads(token1)['credits'] == 5  # 0 + pack5
+    assert payments._serializer().loads(token1)['credits'] == 10  # 0 + pack10
 
     # Same session id again → already consumed, no second grant.
     r2 = client.get('/paid?session_id=sess_123')

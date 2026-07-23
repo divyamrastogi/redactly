@@ -99,12 +99,13 @@ def test_homepage_no_false_claims(client):
 
 def test_homepage_has_repositioned_copy(client):
     body = client.get('/').get_data(as_text=True)
-    assert 'True redaction · Files deleted after download' in body
-    assert 'Share your statement.' in body
-    assert 'Not your whole life.' in body
-    # Trust section headings present.
-    assert 'Nothing is kept' in body
-    assert 'No account needed' in body
+    assert 'Files deleted after download' in body
+    assert 'Share the line.' in body
+    assert 'Not the ledger.' in body
+    # Feature-strip headings present.
+    assert 'True redaction' in body
+    assert 'Nothing stored' in body
+    assert 'No account' in body
 
 
 # --- LLM/AI discoverability ---------------------------------------------------
@@ -114,7 +115,7 @@ def test_llms_txt_serves_summary_with_all_guides():
     resp = client.get('/llms.txt')
     assert resp.status_code == 200
     body = resp.get_data(as_text=True)
-    assert '# Redact Statements' in body
+    assert '# Redactly' in body
     assert 'true' in body.lower() and 'redaction' in body.lower()
     for slug in GUIDES:
         assert f'/guides/{slug}' in body
