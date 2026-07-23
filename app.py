@@ -516,8 +516,37 @@ _SITE_OPEN = '''<!DOCTYPE html>
         }
         .custom-section h2 { font-size: 18px; font-weight: 700; }
         .custom-section > p { font-size: 13px; color: var(--text-muted); margin-top: 6px; }
-        .iframe-wrap { margin-top: 16px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
-        .iframe-wrap iframe { width: 100%; height: 480px; border: 0; display: block; background: #fff; }
+
+        /* Contact form (replaces the old Google Form iframe) */
+        .contact-form { margin-top: 18px; }
+        .contact-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+        .contact-grid .field { margin-top: 0; }
+        .contact-form .field:not(.contact-grid .field) { margin-top: 14px; }
+        .cf-input, .cf-select {
+            width: 100%; background: var(--bg-elevated); border: 1px solid var(--border);
+            border-radius: 12px; color: var(--text); font-family: inherit; font-size: 14px;
+            padding: 11px 14px; outline: none; transition: border-color .15s, box-shadow .15s;
+        }
+        .cf-textarea { resize: vertical; min-height: 96px; line-height: 1.5; }
+        .cf-select {
+            appearance: none; -webkit-appearance: none; cursor: pointer;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239AA4B2' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+            background-repeat: no-repeat; background-position: right 12px center; padding-right: 38px;
+        }
+        .cf-input:focus, .cf-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--tint); }
+        .cf-input::placeholder { color: var(--text-faint); }
+        .contact-form #cf-submit { margin-top: 18px; }
+        .contact-error { margin-top: 12px; font-size: 12.5px; color: var(--error); }
+        .contact-error a { color: var(--error); }
+        .contact-success {
+            display: flex; align-items: flex-start; gap: 12px; margin-top: 16px;
+            background: var(--success-bg); border: 1px solid var(--success-border);
+            border-radius: 12px; padding: 16px 18px; animation: bl-in .25s ease-out;
+        }
+        .contact-success svg { width: 20px; height: 20px; color: var(--success); flex-shrink: 0; margin-top: 1px; }
+        .contact-success h3 { font-size: 14px; font-weight: 600; color: var(--text); }
+        .contact-success p { font-size: 12.5px; color: var(--text-muted); margin-top: 3px; }
+        @media (max-width: 520px) { .contact-grid { grid-template-columns: 1fr; } }
 
         /* ── Post-purchase toast ── */
         .pay-toast {
@@ -804,9 +833,43 @@ _HOMEPAGE_BODY = '''
             <div class="custom-section" id="custom-request">
                 <h2>Need a custom solution?</h2>
                 <p>Get in touch if you need a tailored redaction workflow for your business or use case.</p>
-                <div class="iframe-wrap">
-                    <iframe src="https://docs.google.com/forms/d/e/1FAIpQLSd2PkHw7ATLfQYwL0CwdkKOnLynPU6mRweu5Zs5PCkKBeVB1g/viewform?usp=sf_link">Loading…</iframe>
+
+                <div class="contact-success" id="contact-success" hidden>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    <div>
+                        <h3>Thanks — we've got it.</h3>
+                        <p>We'll get back to you at the email you provided.</p>
+                    </div>
                 </div>
+
+                <form class="contact-form" id="contact-form" novalidate>
+                    <div class="contact-grid">
+                        <div class="field">
+                            <label for="cf-name">Name</label>
+                            <input id="cf-name" class="cf-input" name="name" type="text" required placeholder="Your name" autocomplete="name">
+                        </div>
+                        <div class="field">
+                            <label for="cf-email">Email</label>
+                            <input id="cf-email" class="cf-input" name="email" type="email" required placeholder="you@company.com" autocomplete="email">
+                        </div>
+                    </div>
+                    <div class="field">
+                        <label for="cf-type">What do you need?</label>
+                        <select id="cf-type" class="cf-select" name="project_type" required>
+                            <option value="">Select…</option>
+                            <option>Bulk / business redaction</option>
+                            <option>A bank or card we don't support yet</option>
+                            <option>API or integration</option>
+                            <option>Something else</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="cf-details">A few details</label>
+                        <textarea id="cf-details" class="cf-input cf-textarea" name="details" required rows="4" placeholder="Tell us a little about what you need."></textarea>
+                    </div>
+                    <button type="submit" class="btn-primary btn-block" id="cf-submit">Send message</button>
+                    <p class="contact-error" id="contact-error" hidden>Something went wrong. Please try again, or email us at <a href="mailto:divyamrastogi2@gmail.com">divyamrastogi2@gmail.com</a>.</p>
+                </form>
             </div>
 '''
 
@@ -1238,6 +1301,71 @@ function updateCreditsBadge(n) {
     document.querySelectorAll('.credits-text').forEach(el => { el.textContent = label; });
     document.querySelectorAll('.credits-ind').forEach(el => { el.classList.toggle('low', left <= 0); });
 }
+
+// --- "Need a custom solution?" contact form ---
+// Posts straight to Supabase REST with the PUBLISHABLE key. That key is safe in
+// the browser because the redactly_contact_submissions table's RLS allows insert
+// only — it can't read, update, or delete anything. A Postgres trigger then
+// emails divyamrastogi2@gmail.com via Brevo. No content ever hits the Flask app.
+(function () {
+    var CONTACT_SUPABASE_URL = 'https://pnjsyklmibspekxgslos.supabase.co';
+    var CONTACT_SUPABASE_KEY = 'sb_publishable_K0QR3oL-s0n6PqsPIrJh2g_vCuBDTEE';
+    var CONTACT_TABLE = 'redactly_contact_submissions';
+
+    var form = document.getElementById('contact-form');
+    if (!form) return;
+    var success = document.getElementById('contact-success');
+    var errorMsg = document.getElementById('contact-error');
+    var button = document.getElementById('cf-submit');
+
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+        if (!form.reportValidity()) return;
+
+        var payload = {
+            name: form.elements.name.value.trim(),
+            email: form.elements.email.value.trim(),
+            project_type: form.elements.project_type.value,
+            details: form.elements.details.value.trim(),
+        };
+
+        errorMsg.hidden = true;
+        button.disabled = true;
+        var original = button.textContent;
+        button.textContent = 'Sending…';
+
+        var fail = function () {
+            errorMsg.hidden = false;
+            button.disabled = false;
+            button.textContent = original;
+        };
+
+        // New sb_publishable_ keys use the apikey header only; legacy JWT (eyJ…)
+        // keys would also need Authorization: Bearer.
+        var headers = {
+            'Content-Type': 'application/json',
+            'apikey': CONTACT_SUPABASE_KEY,
+            'Prefer': 'return=minimal',
+        };
+        if (CONTACT_SUPABASE_KEY.indexOf('eyJ') === 0) {
+            headers['Authorization'] = 'Bearer ' + CONTACT_SUPABASE_KEY;
+        }
+
+        fetch(CONTACT_SUPABASE_URL + '/rest/v1/' + CONTACT_TABLE, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify(payload),
+        }).then(function (res) {
+            if (res.ok) {
+                form.hidden = true;
+                if (success) success.hidden = false;
+                if (typeof track === 'function') track('contact_submit', {});
+            } else {
+                fail();
+            }
+        }).catch(fail);
+    });
+})();
 </script>
 '''
 
