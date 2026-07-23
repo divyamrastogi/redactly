@@ -94,7 +94,7 @@ _SITE_OPEN = '''<!DOCTYPE html>
     <title>{{ title }}</title>
     <meta name="description" content="{{ meta_description }}">
     {% if canonical %}<link rel="canonical" href="{{ canonical }}">{% endif %}
-    <meta property="og:site_name" content="Redact Statements">
+    <meta property="og:site_name" content="Redactly">
     <meta property="og:title" content="{{ title }}">
     <meta property="og:description" content="{{ meta_description }}">
     <meta property="og:type" content="{{ og_type or 'website' }}">
@@ -102,10 +102,10 @@ _SITE_OPEN = '''<!DOCTYPE html>
     <meta name="twitter:card" content="summary">
     <meta name="twitter:title" content="{{ title }}">
     <meta name="twitter:description" content="{{ meta_description }}">
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%238b5cf6'/%3E%3Crect x='8' y='10' width='16' height='3' rx='1.5' fill='white'/%3E%3Crect x='8' y='16' width='10' height='3' rx='1.5' fill='white' opacity='0.55'/%3E%3Crect x='8' y='22' width='13' height='3' rx='1.5' fill='black' opacity='0.85'/%3E%3C/svg%3E">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%234A9FD4'/%3E%3Crect x='7' y='9' width='18' height='3.4' rx='1.7' fill='white'/%3E%3Crect x='7' y='19.6' width='11' height='3.4' rx='1.7' fill='white' opacity='0.55'/%3E%3Crect x='7' y='14.3' width='16' height='3.9' rx='1.4' fill='black' opacity='0.82'/%3E%3C/svg%3E">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;550;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <script async src="https://www.googletagmanager.com/gtag/js?id=G-SY9PXXMVD8"></script>
     <script>
     window.dataLayer = window.dataLayer || [];
@@ -116,1137 +116,454 @@ _SITE_OPEN = '''<!DOCTYPE html>
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-        /* ── Dark theme (default) ── */
+        /* ── Redactly design tokens — Light (default) ── */
         :root {
-            --bg:             #0a0a0b;
-            --bg-card:        #111113;
-            --bg-elevated:    #18181b;
-            --border:         rgba(255,255,255,0.07);
-            --border-focus:   rgba(139,92,246,0.6);
-            --text:           #f4f4f5;
-            --text-muted:     #71717a;
-            --text-faint:     #3f3f46;
-            --accent:         #8b5cf6;
-            --accent-glow:    rgba(139,92,246,0.15);
-            --accent-hover:   #7c3aed;
-            --success:        #10b981;
-            --success-bg:     rgba(16,185,129,0.08);
-            --success-border: rgba(16,185,129,0.2);
-            --error:          #f87171;
-            --error-bg:       rgba(248,113,113,0.08);
-            --error-border:   rgba(248,113,113,0.2);
-            --warning:        #f59e0b;
-            --warning-border: rgba(245,158,11,0.28);
-            --radius:         10px;
-            --radius-lg:      14px;
-            --shadow:         0 1px 3px rgba(0,0,0,0.4), 0 4px 16px rgba(0,0,0,0.3);
-        }
-
-        /* ── Light theme ── */
-        .light {
-            --bg:             #fafafa;
-            --bg-card:        #ffffff;
-            --bg-elevated:    #f4f4f5;
-            --border:         rgba(0,0,0,0.08);
-            --border-focus:   rgba(109,40,217,0.5);
-            --text:           #18181b;
-            --text-muted:     #52525b;
-            --text-faint:     #a1a1aa;
-            --accent:         #7c3aed;
-            --accent-glow:    rgba(124,58,237,0.10);
-            --accent-hover:   #6d28d9;
+            --bg:             #FAFBFC;
+            --bg-card:        #FFFFFF;
+            --bg-elevated:    #F2F6F9;
+            --border:         #E5E7EB;
+            --border-focus:   rgba(74,159,212,0.6);
+            --text:           #1F2A37;
+            --text-muted:     #5B6572;
+            --text-faint:     #9AA4B2;
+            --accent:         #4A9FD4;
+            --accent-strong:  #3A8FC4;
+            --accent-hover:   #3A8FC4;
+            --accent-grad:    linear-gradient(135deg,#4A9FD4,#6BB5E0);
+            --tint:           rgba(74,159,212,0.07);
+            --glow:           0 4px 12px rgba(74,159,212,0.30);
             --success:        #059669;
-            --success-bg:     rgba(5,150,105,0.06);
-            --success-border: rgba(5,150,105,0.2);
-            --error:          #dc2626;
+            --success-bg:     rgba(5,150,105,0.08);
+            --success-border: rgba(5,150,105,0.22);
+            --warning:        #D97706;
+            --warning-bg:     rgba(245,158,11,0.10);
+            --warning-border: rgba(217,119,6,0.28);
+            --error:          #DC2626;
             --error-bg:       rgba(220,38,38,0.06);
-            --error-border:   rgba(220,38,38,0.2);
-            --warning:        #d97706;
-            --warning-border: rgba(217,119,6,0.26);
-            --shadow:         0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.05);
+            --error-border:   rgba(220,38,38,0.22);
+            --radius:         12px;
+            --radius-lg:      18px;
+            --shadow:         0 2px 8px rgba(0,0,0,0.04), 0 1px 4px rgba(0,0,0,0.02);
+            --shadow-lg:      0 4px 16px rgba(0,0,0,0.08), 0 2px 8px rgba(0,0,0,0.04);
         }
 
-        /* ── System default (prefers dark → dark vars already on :root) ── */
-        @media (prefers-color-scheme: light) {
-            :root:not(.dark) {
-                --bg:             #fafafa;
-                --bg-card:        #ffffff;
-                --bg-elevated:    #f4f4f5;
-                --border:         rgba(0,0,0,0.08);
-                --border-focus:   rgba(109,40,217,0.5);
-                --text:           #18181b;
-                --text-muted:     #52525b;
-                --text-faint:     #a1a1aa;
-                --accent:         #7c3aed;
-                --accent-glow:    rgba(124,58,237,0.10);
-                --accent-hover:   #6d28d9;
-                --success:        #059669;
-                --success-bg:     rgba(5,150,105,0.06);
-                --success-border: rgba(5,150,105,0.2);
-                --error:          #dc2626;
-                --error-bg:       rgba(220,38,38,0.06);
-                --error-border:   rgba(220,38,38,0.2);
-                --warning:        #d97706;
-                --warning-border: rgba(217,119,6,0.26);
-                --shadow:         0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.05);
+        /* ── Dark tokens ── */
+        .dark {
+            --bg:             #0D1520;
+            --bg-card:        #141F2C;
+            --bg-elevated:    #1B2836;
+            --border:         rgba(255,255,255,0.09);
+            --border-focus:   rgba(107,181,224,0.7);
+            --text:           #EAF1F8;
+            --text-muted:     #9FB0C0;
+            --text-faint:     #5F7183;
+            --accent:         #6BB5E0;
+            --accent-strong:  #4A9FD4;
+            --accent-hover:   #8AC6EA;
+            --tint:           rgba(74,159,212,0.14);
+            --glow:           0 4px 14px rgba(74,159,212,0.35);
+            --success:        #10B981;
+            --success-bg:     rgba(16,185,129,0.12);
+            --success-border: rgba(16,185,129,0.28);
+            --warning:        #F59E0B;
+            --warning-bg:     rgba(245,158,11,0.14);
+            --warning-border: rgba(245,158,11,0.32);
+            --error:          #F87171;
+            --error-bg:       rgba(248,113,113,0.12);
+            --error-border:   rgba(248,113,113,0.28);
+            --shadow:         0 2px 10px rgba(0,0,0,0.45), 0 1px 4px rgba(0,0,0,0.35);
+            --shadow-lg:      0 6px 24px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4);
+        }
+
+        /* System dark when the visitor hasn't chosen a theme */
+        @media (prefers-color-scheme: dark) {
+            :root:not(.light) {
+                --bg:             #0D1520;
+                --bg-card:        #141F2C;
+                --bg-elevated:    #1B2836;
+                --border:         rgba(255,255,255,0.09);
+                --border-focus:   rgba(107,181,224,0.7);
+                --text:           #EAF1F8;
+                --text-muted:     #9FB0C0;
+                --text-faint:     #5F7183;
+                --accent:         #6BB5E0;
+                --accent-strong:  #4A9FD4;
+                --accent-hover:   #8AC6EA;
+                --tint:           rgba(74,159,212,0.14);
+                --glow:           0 4px 14px rgba(74,159,212,0.35);
+                --success:        #10B981;
+                --success-bg:     rgba(16,185,129,0.12);
+                --success-border: rgba(16,185,129,0.28);
+                --warning:        #F59E0B;
+                --warning-bg:     rgba(245,158,11,0.14);
+                --warning-border: rgba(245,158,11,0.32);
+                --error:          #F87171;
+                --error-bg:       rgba(248,113,113,0.12);
+                --error-border:   rgba(248,113,113,0.28);
+                --shadow:         0 2px 10px rgba(0,0,0,0.45), 0 1px 4px rgba(0,0,0,0.35);
+                --shadow-lg:      0 6px 24px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.4);
             }
         }
 
+        html { scroll-behavior: smooth; }
         html, body {
             min-height: 100vh;
             background: var(--bg);
             color: var(--text);
-            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+            font-family: 'Poppins', system-ui, -apple-system, sans-serif;
             font-size: 14px;
             line-height: 1.6;
             -webkit-font-smoothing: antialiased;
         }
+        a { color: var(--accent); text-decoration: none; }
+        a:hover { color: var(--accent-strong); }
 
         /* ── Layout ── */
-        .page-wrap {
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .container {
-            width: 100%;
-            max-width: 880px;
-            margin: 0 auto;
-            padding: 0 24px;
-        }
+        .page-wrap { min-height: 100vh; display: flex; flex-direction: column; }
+        .container { width: 100%; max-width: 1180px; margin: 0 auto; padding: 0 44px; }
 
         /* ── Header ── */
-        .site-header {
-            border-bottom: 1px solid var(--border);
-            padding: 20px 0;
-        }
-
-        .header-inner {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .logo {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            text-decoration: none;
-        }
-
+        .site-header { border-bottom: 1px solid var(--border); padding: 18px 0; }
+        .header-inner { display: flex; align-items: center; justify-content: space-between; }
+        .logo { display: flex; align-items: center; gap: 11px; text-decoration: none; }
         .logo-icon {
-            width: 32px;
-            height: 32px;
-            background: var(--accent);
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            flex-shrink: 0;
+            width: 34px; height: 34px; border-radius: 10px;
+            background: var(--accent-grad); box-shadow: var(--glow);
+            display: flex; align-items: center; justify-content: center; flex-shrink: 0;
         }
-
-        .logo-icon svg {
-            width: 18px;
-            height: 18px;
-            color: white;
-        }
-
-        .logo-name {
-            font-size: 16px;
-            font-weight: 600;
-            color: var(--text);
-            letter-spacing: -0.02em;
-        }
-
+        .logo-icon svg { width: 19px; height: 19px; color: #fff; }
+        .logo-name { font-size: 17px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; }
+        .header-right { display: flex; align-items: center; gap: 22px; }
+        .navlink { font-size: 13px; color: var(--text-muted); cursor: pointer; transition: color .15s; }
+        .navlink:hover { color: var(--text); }
         .usage-badge {
-            font-size: 12px;
-            color: var(--text-muted);
-            background: var(--bg-elevated);
-            border: 1px solid var(--border);
-            padding: 4px 10px;
-            border-radius: 20px;
+            font-size: 12px; color: var(--text-muted); background: var(--bg-elevated);
+            border: 1px solid var(--border); padding: 4px 11px; border-radius: 20px;
         }
 
-        .header-right {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        /* ── Theme toggle button ── */
+        /* ── Theme toggle ── */
         .theme-toggle {
-            width: 34px;
-            height: 34px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            background: var(--bg-elevated);
-            border: 1px solid var(--border);
-            border-radius: 8px;
-            cursor: pointer;
-            color: var(--text-muted);
-            transition: color 0.15s, background 0.15s, border-color 0.15s;
-            flex-shrink: 0;
+            width: 36px; height: 36px; display: flex; align-items: center; justify-content: center;
+            background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 10px;
+            cursor: pointer; color: var(--text-muted); transition: color .15s, border-color .15s;
         }
-
-        .theme-toggle:hover {
-            color: var(--text);
-            border-color: var(--accent);
-        }
-
-        .theme-toggle svg {
-            width: 16px;
-            height: 16px;
-        }
-
-        /* show/hide sun vs moon */
-        .icon-sun  { display: none; }
+        .theme-toggle:hover { color: var(--accent); border-color: var(--accent); }
+        .theme-toggle svg { width: 16px; height: 16px; }
+        .icon-sun { display: none; }
         .icon-moon { display: block; }
-        .light .icon-sun  { display: block; }
-        .light .icon-moon { display: none; }
-        @media (prefers-color-scheme: light) {
-            :root:not(.dark) .icon-sun  { display: block; }
-            :root:not(.dark) .icon-moon { display: none; }
+        .dark .icon-sun { display: block; }
+        .dark .icon-moon { display: none; }
+        @media (prefers-color-scheme: dark) {
+            :root:not(.light) .icon-sun { display: block; }
+            :root:not(.light) .icon-moon { display: none; }
         }
 
-        /* ── Hero ── */
-        .hero {
-            padding: 56px 0 40px;
-            text-align: center;
+        /* ── Hero (split) ── */
+        .hero-split {
+            display: grid; grid-template-columns: 1fr 1fr; gap: 44px;
+            padding: 56px 0; align-items: center;
         }
-
-        .hero-eyebrow {
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 11px;
-            font-weight: 500;
-            letter-spacing: 0.08em;
-            text-transform: uppercase;
-            color: var(--accent);
-            background: var(--accent-glow);
-            border: 1px solid rgba(139,92,246,0.25);
-            padding: 4px 12px;
-            border-radius: 20px;
-            margin-bottom: 20px;
+        .hero-badge {
+            display: inline-flex; align-items: center; gap: 7px;
+            font-size: 11px; font-weight: 600; letter-spacing: .07em; text-transform: uppercase;
+            color: var(--accent); background: var(--tint); padding: 5px 13px; border-radius: 20px;
         }
-
-        .hero h1 {
-            font-size: clamp(28px, 5vw, 42px);
-            font-weight: 700;
-            letter-spacing: -0.03em;
-            line-height: 1.15;
-            color: var(--text);
-            margin-bottom: 14px;
+        .hero-copy h1 {
+            font-size: 44px; font-weight: 700; letter-spacing: -.03em; line-height: 1.1;
+            margin: 20px 0 16px;
         }
+        .hero-sub { font-size: 16px; color: var(--text-muted); line-height: 1.65; max-width: 440px; }
+        .hero-cta-row { display: flex; gap: 14px; margin-top: 26px; align-items: center; flex-wrap: wrap; }
+        .hero-note { font-size: 13px; color: var(--text-faint); }
+        .hero-stats { display: flex; gap: 30px; margin-top: 32px; }
+        .stat-num { font-size: 22px; font-weight: 700; }
+        .stat-label { font-size: 12px; color: var(--text-muted); }
 
-        .hero p {
-            font-size: 16px;
-            color: var(--text-muted);
-            max-width: 480px;
-            margin: 0 auto;
-            line-height: 1.65;
+        /* ── Buttons ── */
+        .btn-primary {
+            display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+            background: var(--accent-grad); color: #fff; border: none; border-radius: 12px;
+            font-family: inherit; font-size: 14px; font-weight: 600; padding: 0 22px; height: 46px;
+            cursor: pointer; box-shadow: var(--glow); transition: transform .12s, filter .15s, opacity .15s;
         }
+        .btn-primary:hover { filter: brightness(1.04); color: #fff; }
+        .btn-primary:active { transform: translateY(1px); }
+        .btn-primary:disabled { opacity: .65; cursor: default; box-shadow: none; }
+        .btn-block { width: 100%; }
 
-        /* ── Cards ── */
-        .card {
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: var(--radius-lg);
-            box-shadow: var(--shadow);
+        /* ── Tool card ── */
+        .tool-card {
+            background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-lg); padding: 24px; scroll-margin-top: 90px;
         }
-
-        .main-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            margin-bottom: 24px;
+        .tool-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+        .tool-title { font-size: 15px; font-weight: 600; }
+        /* Credit indicator (header chip + tool-card badge) */
+        .credits-ind {
+            display: inline-flex; align-items: center; gap: 6px;
+            color: var(--success); background: var(--success-bg);
+            border: 1px solid var(--success-border); border-radius: 20px;
+            font-weight: 600; white-space: nowrap; transition: color .15s, background .15s, border-color .15s;
         }
+        .credits-ind svg { width: 14px; height: 14px; flex-shrink: 0; }
+        .credits-ind .credits-text { line-height: 1; }
+        .credits-ind.low { color: var(--warning); background: var(--warning-bg); border-color: var(--warning-border); }
+        .header-credits { font-size: 12px; padding: 5px 12px; }
+        a.header-credits:hover { color: var(--success); filter: brightness(1.03); }
+        a.header-credits.low:hover { color: var(--warning); }
+        /* In the tool card the badge is the primary balance readout — larger + bolder. */
+        .card-credits { font-size: 13.5px; padding: 7px 14px; box-shadow: var(--shadow); }
+        .card-credits .credits-text { font-weight: 700; }
 
-        @media (max-width: 680px) {
-            .main-grid { grid-template-columns: 1fr; }
+        /* ── Fields ── */
+        .field { margin-top: 14px; }
+        .field > label {
+            display: block; font-size: 12px; font-weight: 500; color: var(--text-muted); margin-bottom: 7px;
         }
-
-        /* ── How it works card ── */
-        .how-card {
-            padding: 28px;
+        .field > label span { color: var(--text-faint); font-weight: 400; }
+        .hint { display: block; font-size: 11.5px; color: var(--text-faint); margin-top: 6px; }
+        .bl-in, select#provider, #keywords {
+            width: 100%; background: var(--bg-elevated); border: 1px solid var(--border);
+            border-radius: 12px; color: var(--text); font-family: inherit; font-size: 14px;
+            padding: 11px 14px; outline: none; transition: border-color .15s, box-shadow .15s;
         }
-
-        .how-card h2 {
-            font-size: 15px;
-            font-weight: 600;
-            color: var(--text);
-            margin-bottom: 12px;
-            letter-spacing: -0.01em;
+        select#provider {
+            appearance: none; -webkit-appearance: none; cursor: pointer;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%239AA4B2' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+            background-repeat: no-repeat; background-position: right 12px center; padding-right: 38px;
         }
-
-        .how-card p {
-            font-size: 13px;
-            color: var(--text-muted);
-            margin-bottom: 16px;
-            line-height: 1.65;
+        .bl-in:focus, select#provider:focus, #keywords:focus {
+            border-color: var(--accent); box-shadow: 0 0 0 3px var(--tint);
         }
-
-        .how-list {
-            list-style: none;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            margin-bottom: 20px;
-        }
-
-        .how-list li {
-            display: flex;
-            align-items: flex-start;
-            gap: 10px;
-            font-size: 13px;
-            color: var(--text-muted);
-        }
-
-        .how-list li::before {
-            content: '';
-            width: 5px;
-            height: 5px;
-            border-radius: 50%;
-            background: var(--accent);
-            margin-top: 7px;
-            flex-shrink: 0;
-        }
-
-        .example-keywords {
-            background: var(--bg-elevated);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 12px 16px;
-        }
-
-        .example-keywords p {
-            font-size: 12px;
-            color: var(--text-faint);
-            margin-bottom: 6px;
-            text-transform: uppercase;
-            letter-spacing: 0.06em;
-            font-weight: 500;
-        }
-
-        .example-keywords code {
-            font-family: 'JetBrains Mono', 'Fira Code', monospace;
-            font-size: 12px;
-            color: var(--accent);
-        }
-
-        /* ── Form card ── */
-        .form-card {
-            padding: 28px;
-        }
-
-        .form-card h2 {
-            font-size: 15px;
-            font-weight: 600;
-            color: var(--text);
-            margin-bottom: 22px;
-            letter-spacing: -0.01em;
-        }
-
-        .form-stack {
-            display: flex;
-            flex-direction: column;
-            gap: 18px;
-        }
-
-        .field label {
-            display: block;
-            font-size: 12px;
-            font-weight: 500;
-            color: var(--text-muted);
-            margin-bottom: 7px;
-            letter-spacing: 0.01em;
-        }
-
-        .field label span {
-            color: var(--text-faint);
-            font-weight: 400;
-        }
-
-        .field select,
-        .field input[type="text"] {
-            width: 100%;
-            background: var(--bg-elevated);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            color: var(--text);
-            font-family: inherit;
-            font-size: 13.5px;
-            padding: 9px 13px;
-            outline: none;
-            transition: border-color 0.15s, box-shadow 0.15s;
-            appearance: none;
-            -webkit-appearance: none;
-        }
-
-        .field select {
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
-            background-repeat: no-repeat;
-            background-position: right 12px center;
-            padding-right: 36px;
-            cursor: pointer;
-        }
-
-        .field select:focus,
-        .field input[type="text"]:focus {
-            border-color: var(--border-focus);
-            box-shadow: 0 0 0 3px var(--accent-glow);
-        }
-
-        .field input::placeholder {
-            color: var(--text-faint);
-        }
-
-        .hint {
-            display: block;
-            font-size: 11.5px;
-            color: var(--text-faint);
-            margin-top: 5px;
-        }
-
-        /* ── Barclaycard tip ── */
-        .provider-tip {
-            display: none;
-            align-items: flex-start;
-            gap: 10px;
-            background: rgba(139,92,246,0.06);
-            border: 1px solid rgba(139,92,246,0.2);
-            border-radius: var(--radius);
-            padding: 11px 14px;
-            font-size: 12.5px;
-            color: #c4b5fd;
-        }
-
-        .provider-tip.visible { display: flex; }
-
-        .provider-tip svg {
-            width: 15px;
-            height: 15px;
-            flex-shrink: 0;
-            margin-top: 1px;
-            color: var(--accent);
-        }
-
-        /* ── Mode selector (radio cards) ── */
-        .mode-group {
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-        }
-
-        .mode-card {
-            position: relative;
-            display: block;
-            background: var(--bg-elevated);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 11px 14px;
-            cursor: pointer;
-            transition: border-color 0.15s, box-shadow 0.15s;
-        }
-
-        .mode-card input[type="radio"] {
-            position: absolute;
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-
-        .mode-card:hover {
-            border-color: var(--border-focus);
-        }
-
-        .mode-card.checked {
-            border-color: var(--accent);
-            box-shadow: 0 0 0 3px var(--accent-glow);
-        }
-
-        .mode-title {
-            display: block;
-            font-size: 13px;
-            font-weight: 600;
-            color: var(--text);
-            letter-spacing: -0.01em;
-        }
-
-        .mode-card.checked .mode-title {
-            color: var(--accent);
-        }
-
-        .mode-desc {
-            display: block;
-            font-size: 11.5px;
-            font-weight: 400;
-            color: var(--text-faint);
-            margin-top: 2px;
-            line-height: 1.45;
-        }
-
-        .mode-explainer {
-            display: none;
-            align-items: flex-start;
-            gap: 10px;
-            background: rgba(139,92,246,0.06);
-            border: 1px solid rgba(139,92,246,0.2);
-            border-radius: var(--radius);
-            padding: 11px 14px;
-            font-size: 12.5px;
-            color: var(--text-muted);
-            line-height: 1.5;
-        }
-
-        .mode-explainer.visible { display: flex; }
-
-        .mode-explainer svg {
-            width: 15px;
-            height: 15px;
-            flex-shrink: 0;
-            margin-top: 1px;
-            color: var(--accent);
-        }
+        #keywords::placeholder, .bl-in::placeholder { color: var(--text-faint); }
 
         /* ── Drop zone ── */
         .drop-zone {
-            position: relative;
-            border: 1.5px dashed var(--border);
-            border-radius: var(--radius);
-            padding: 28px 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            cursor: pointer;
-            transition: border-color 0.2s, background 0.2s;
-            background: transparent;
+            border: 1.5px dashed var(--border); border-radius: 12px; padding: 30px 20px;
+            display: flex; flex-direction: column; align-items: center; gap: 6px;
+            cursor: pointer; transition: border-color .2s, background .2s; text-align: center;
         }
-
-        .drop-zone:hover,
-        .drop-zone.drag-over {
-            border-color: var(--accent);
-            background: var(--accent-glow);
-        }
-
-        .drop-zone svg {
-            width: 28px;
-            height: 28px;
-            color: var(--text-faint);
-            transition: color 0.2s;
-        }
-
-        .drop-zone:hover svg,
-        .drop-zone.drag-over svg {
-            color: var(--accent);
-        }
-
-        .drop-label {
-            font-size: 13px;
-            color: var(--text-muted);
-        }
-
-        .drop-label strong {
-            color: var(--accent);
-            font-weight: 500;
-        }
-
-        .drop-sub {
-            font-size: 11.5px;
-            color: var(--text-faint);
-        }
+        .drop-zone:hover, .drop-zone.drag-over { border-color: var(--accent); background: var(--tint); }
+        .drop-zone svg { width: 30px; height: 30px; color: var(--accent); }
+        .drop-label { font-size: 13.5px; color: var(--text-muted); margin-top: 2px; }
+        .drop-label strong { color: var(--accent); }
+        .drop-sub { font-size: 11.5px; color: var(--text-faint); }
 
         /* ── File list ── */
-        .file-list {
-            list-style: none;
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            margin-top: 8px;
-        }
-
+        .file-list { list-style: none; margin-top: 8px; display: flex; flex-direction: column; gap: 8px; }
         .file-item {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            background: var(--bg-elevated);
-            border: 1px solid var(--border);
-            border-radius: 7px;
-            padding: 7px 11px;
-            font-size: 12.5px;
-            color: var(--text-muted);
-            animation: slide-in 0.18s ease-out;
+            display: flex; align-items: center; justify-content: space-between;
+            background: var(--bg-elevated); border: 1px solid var(--border); border-radius: 9px;
+            padding: 8px 12px; font-size: 12.5px; color: var(--text-muted);
+            animation: bl-in .18s ease-out;
         }
-
-        .file-item span {
-            display: flex;
-            align-items: center;
-            gap: 7px;
-            min-width: 0;
-        }
-
-        .file-item .file-name {
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-        }
-
+        .file-item > span { display: flex; align-items: center; gap: 8px; min-width: 0; }
+        .file-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
         .remove-btn {
-            background: none;
-            border: none;
-            cursor: pointer;
-            color: var(--text-faint);
-            font-size: 14px;
-            line-height: 1;
-            padding: 2px 5px;
-            border-radius: 4px;
-            transition: color 0.15s, background 0.15s;
-            flex-shrink: 0;
+            background: none; border: none; cursor: pointer; color: var(--text-faint);
+            font-size: 14px; padding: 2px 5px; line-height: 1;
         }
+        .remove-btn:hover { color: var(--error); }
 
-        .remove-btn:hover {
-            color: var(--error);
-            background: var(--error-bg);
+        /* ── Mode chips ── */
+        .mode-group { display: flex; gap: 8px; }
+        .mode-card {
+            flex: 1; position: relative; text-align: center; padding: 10px 6px;
+            background: var(--bg-elevated); border: 1.5px solid var(--border); border-radius: 12px;
+            cursor: pointer; transition: border-color .15s, box-shadow .15s, background .15s;
         }
+        .mode-card:hover { border-color: var(--accent); }
+        .mode-card.checked { border-color: var(--accent); box-shadow: 0 0 0 3px var(--tint); background: var(--tint); }
+        .mode-card input { position: absolute; opacity: 0; pointer-events: none; }
+        .mode-title { font-size: 12px; font-weight: 600; }
 
-        /* ── Toggle / Checkbox ── */
-        .toggle-row {
-            display: flex;
-            align-items: flex-start;
-            gap: 12px;
+        /* ── Inline explainers / tips ── */
+        .provider-tip, .mode-explainer {
+            display: none; align-items: flex-start; gap: 9px; margin-top: 10px;
+            font-size: 12px; color: var(--text-muted); line-height: 1.55;
+            background: var(--tint); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
         }
+        .provider-tip.visible, .mode-explainer.visible { display: flex; }
+        .provider-tip svg, .mode-explainer svg { width: 15px; height: 15px; color: var(--accent); flex-shrink: 0; margin-top: 1px; }
+        .provider-tip strong, .mode-explainer strong { color: var(--text); font-weight: 600; }
 
-        .toggle-wrap {
-            position: relative;
-            flex-shrink: 0;
-            margin-top: 1px;
-        }
-
-        .toggle-wrap input[type="checkbox"] {
-            position: absolute;
-            opacity: 0;
-            width: 0;
-            height: 0;
-        }
-
+        /* ── Enhanced-privacy toggle ── */
+        .toggle-row { display: flex; align-items: center; gap: 11px; margin-top: 16px; }
+        .toggle-wrap { position: relative; flex-shrink: 0; }
+        .toggle-wrap input { position: absolute; opacity: 0; width: 0; height: 0; }
         .toggle-track {
-            display: flex;
-            align-items: center;
-            width: 36px;
-            height: 20px;
-            background: var(--bg-elevated);
-            border: 1px solid var(--border);
-            border-radius: 20px;
-            cursor: pointer;
-            transition: background 0.2s, border-color 0.2s;
+            display: block; width: 38px; height: 22px; border-radius: 20px;
+            background: var(--bg-elevated); border: 1px solid var(--border); cursor: pointer;
+            transition: background .18s, border-color .18s; position: relative;
         }
-
-        .toggle-wrap input:checked ~ .toggle-track {
-            background: var(--accent);
-            border-color: var(--accent);
-        }
-
         .toggle-thumb {
-            width: 14px;
-            height: 14px;
-            background: white;
-            border-radius: 50%;
-            margin-left: 2px;
-            transition: transform 0.2s;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+            position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+            background: var(--text-faint); transition: transform .18s, background .18s;
         }
+        .toggle-wrap input:checked + .toggle-track { background: var(--accent); border-color: var(--accent); }
+        .toggle-wrap input:checked + .toggle-track .toggle-thumb { transform: translateX(16px); background: #fff; }
+        .toggle-label-text { font-size: 12.5px; font-weight: 500; color: var(--text); line-height: 1.4; }
+        .toggle-label-text small { display: block; font-size: 11.5px; font-weight: 400; color: var(--text-faint); }
 
-        .toggle-wrap input:checked ~ .toggle-track .toggle-thumb {
-            transform: translateX(16px);
-        }
-
-        .toggle-label-text {
-            font-size: 13px;
-            font-weight: 500;
-            color: var(--text);
-        }
-
-        .toggle-label-text small {
-            display: block;
-            font-size: 11.5px;
-            font-weight: 400;
-            color: var(--text-faint);
-            margin-top: 2px;
-        }
-
-        /* ── Submit button ── */
-        .btn-primary {
-            width: 100%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 8px;
-            padding: 10px 20px;
-            background: var(--accent);
-            color: white;
-            font-family: inherit;
-            font-size: 13.5px;
-            font-weight: 600;
-            letter-spacing: -0.01em;
-            border: none;
-            border-radius: var(--radius);
-            cursor: pointer;
-            transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.3), 0 0 0 0 var(--accent-glow);
-        }
-
-        .btn-primary:hover {
-            background: var(--accent-hover);
-            box-shadow: 0 2px 8px rgba(139,92,246,0.4);
-        }
-
-        .btn-primary:active {
-            transform: scale(0.985);
-        }
-
-        .btn-primary:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none;
-        }
-
+        /* ── Spinner ── */
         .spinner {
-            display: none;
-            width: 15px;
-            height: 15px;
-            border: 2px solid rgba(255,255,255,0.3);
-            border-top-color: white;
-            border-radius: 50%;
-            animation: spin 0.7s linear infinite;
+            display: none; width: 15px; height: 15px; border: 2px solid rgba(255,255,255,.4);
+            border-top-color: #fff; border-radius: 50%; animation: spin .7s linear infinite; margin-left: 8px;
         }
-
-        .spinner.visible { display: block; }
+        .spinner.visible { display: inline-block; }
 
         /* ── Results ── */
-        .results-section {
-            margin-bottom: 24px;
-        }
-
-        .results-heading {
-            font-size: 13px;
-            font-weight: 500;
-            color: var(--text-muted);
-            margin-bottom: 10px;
-            letter-spacing: 0.04em;
-            text-transform: uppercase;
-        }
-
-        .results-list {
-            display: flex;
-            flex-direction: column;
-            gap: 6px;
-        }
-
-        /* ── Bank-request banner (auto-detection missed) ── */
-        .bank-request-banner {
-            margin-top: 12px;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-left: 3px solid var(--accent);
-            border-radius: var(--radius);
-            padding: 14px 16px;
-            animation: slide-in 0.2s ease-out;
-        }
-        .bank-request-banner p {
-            font-size: 13px;
-            color: var(--text);
-            margin-bottom: 10px;
-            letter-spacing: -0.01em;
-        }
-        .bank-request-row {
-            display: flex;
-            gap: 8px;
-        }
-        .bank-request-row input {
-            flex: 1;
-            min-width: 0;
-            background: var(--bg-elevated);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            color: var(--text);
-            font-family: inherit;
-            font-size: 13.5px;
-            padding: 9px 13px;
-            outline: none;
-            transition: border-color 0.15s, box-shadow 0.15s;
-        }
-        .bank-request-row input:focus {
-            border-color: var(--border-focus);
-            box-shadow: 0 0 0 3px var(--accent-glow);
-        }
-        .bank-request-row input::placeholder { color: var(--text-faint); }
-        .bank-request-row button {
-            padding: 9px 16px;
-            background: var(--accent);
-            color: white;
-            font-family: inherit;
-            font-size: 13px;
-            font-weight: 600;
-            letter-spacing: -0.01em;
-            border: none;
-            border-radius: var(--radius);
-            cursor: pointer;
-            white-space: nowrap;
-            transition: background 0.15s, transform 0.1s;
-        }
-        .bank-request-row button:hover { background: var(--accent-hover); }
-        .bank-request-row button:active { transform: scale(0.98); }
-        .bank-request-row button:disabled { opacity: 0.5; cursor: not-allowed; }
-        .bank-request-done {
-            font-size: 12px;
-            color: var(--success);
-            margin-top: 8px;
-            margin-bottom: 0;
-        }
-
-        /* ── Beta banner (generic bank-statement path) ── */
-        .beta-banner {
-            margin-top: 12px;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-left: 3px solid var(--warning);
-            border-radius: var(--radius);
-            padding: 12px 16px;
-            animation: slide-in 0.2s ease-out;
-        }
-        .beta-banner p {
-            font-size: 13px;
-            color: var(--text);
-            margin: 0;
-            letter-spacing: -0.01em;
-            line-height: 1.45;
-        }
-
+        .results-section { margin-top: 14px; }
+        .results-list { display: flex; flex-direction: column; gap: 8px; }
         .result-card {
-            display: flex;
-            align-items: center;
-            gap: 14px;
-            background: var(--bg-card);
-            border: 1px solid var(--border);
-            border-radius: var(--radius);
-            padding: 13px 16px;
-            animation: slide-in 0.2s ease-out;
+            display: flex; align-items: center; gap: 11px; background: var(--bg-elevated);
+            border: 1px solid var(--border); border-radius: 12px; padding: 10px 13px;
+            animation: bl-in .2s ease-out;
         }
-
-        .result-card.success {
-            border-color: var(--success-border);
-            background: var(--success-bg);
-        }
-
-        .result-card.error {
-            border-color: var(--error-border);
-            background: var(--error-bg);
-        }
-
         .result-icon {
-            flex-shrink: 0;
-            width: 32px;
-            height: 32px;
-            border-radius: 8px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+            width: 30px; height: 30px; border-radius: 9px; display: flex; align-items: center;
+            justify-content: center; flex-shrink: 0;
         }
-
-        .result-icon svg {
-            width: 16px;
-            height: 16px;
-        }
-
-        .result-card .pending .result-icon {
-            background: var(--bg-elevated);
-        }
-
-        .result-info {
-            flex: 1;
-            min-width: 0;
-        }
-
-        .result-name {
-            font-size: 13px;
-            font-weight: 500;
-            color: var(--text);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .result-detail {
-            font-size: 12px;
-            color: var(--text-muted);
-            margin-top: 2px;
-        }
-
-        .result-card.error .result-detail {
-            color: var(--error);
-        }
-
+        .result-info { flex: 1; min-width: 0; }
+        .result-name { font-size: 12.5px; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .result-detail { font-size: 11.5px; color: var(--text-muted); margin-top: 1px; }
         .btn-download {
-            flex-shrink: 0;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            background: rgba(16,185,129,0.12);
-            border: 1px solid rgba(16,185,129,0.3);
-            color: var(--success);
-            font-family: inherit;
-            font-size: 12px;
-            font-weight: 500;
-            padding: 6px 12px;
-            border-radius: 7px;
-            text-decoration: none;
-            transition: background 0.15s;
+            display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0;
+            font-size: 12px; font-weight: 500; color: var(--text); background: var(--bg-card);
+            border: 1px solid var(--border); border-radius: 9px; padding: 7px 12px; transition: border-color .15s;
         }
+        .btn-download:hover { border-color: var(--accent); color: var(--accent); }
+        .btn-download svg { width: 14px; height: 14px; }
 
-        .btn-download:hover {
-            background: rgba(16,185,129,0.2);
+        /* ── Demand-signal banners ── */
+        .bank-request-banner, .beta-banner {
+            margin-top: 10px; background: var(--warning-bg); border: 1px solid var(--warning-border);
+            border-radius: 12px; padding: 12px 14px; font-size: 12.5px; color: var(--text);
         }
+        .bank-request-row { display: flex; gap: 8px; margin-top: 9px; }
+        .bank-request-row input {
+            flex: 1; background: var(--bg-card); border: 1px solid var(--border); border-radius: 9px;
+            color: var(--text); font-family: inherit; font-size: 12.5px; padding: 8px 11px; outline: none;
+        }
+        .bank-request-row input:focus { border-color: var(--accent); }
+        .bank-request-row button {
+            background: var(--accent); color: #fff; border: none; border-radius: 9px;
+            font-family: inherit; font-size: 12.5px; font-weight: 500; padding: 8px 14px; cursor: pointer;
+        }
+        .bank-request-done { margin-top: 8px; color: var(--success); font-size: 12px; }
 
-        .btn-download svg {
-            width: 13px;
-            height: 13px;
+        /* ── Feature strip ── */
+        /* Full-bleed band: break out of the container's 44px side padding so the
+           elevated background spans the whole content column, per the design. */
+        .feature-strip {
+            background: var(--bg-elevated);
+            border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);
+            padding: 38px 44px; margin: 24px -44px; scroll-margin-top: 80px;
         }
+        .feature-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 40px; }
+        .feature { display: flex; gap: 16px; align-items: flex-start; }
+        .feature-ic {
+            width: 48px; height: 48px; border-radius: 16px; background: var(--tint);
+            border: 1px solid var(--border); display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0; box-shadow: var(--shadow);
+        }
+        .feature-ic svg { width: 19px; height: 19px; color: var(--accent); }
+        .feature h3 { font-size: 14.5px; font-weight: 600; letter-spacing: -.01em; }
+        .feature p { font-size: 12.5px; color: var(--text-muted); margin-top: 5px; line-height: 1.65; max-width: 30ch; }
 
-        /* ── Pay toast (post-purchase redirect) ── */
-        .pay-toast {
-            position: fixed;
-            left: 50%;
-            bottom: 28px;
-            transform: translateX(-50%);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            background: var(--bg-card);
-            border: 1px solid var(--success-border);
-            border-radius: var(--radius-lg);
-            box-shadow: var(--shadow);
-            padding: 12px 18px;
-            font-size: 13px;
-            color: var(--text);
-            z-index: 50;
-            animation: slide-in 0.25s ease-out;
+        /* ── Pricing ── */
+        .pricing { padding: 48px 0; text-align: center; scroll-margin-top: 70px; }
+        .pricing h2 { font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
+        .pricing-sub { font-size: 13px; color: var(--text-muted); margin-top: 6px; }
+        .price-row {
+            display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;
+            margin: 24px auto 0; max-width: 600px;
         }
-        .pay-toast.error { border-color: var(--error-border); }
-        .pay-toast svg { width: 16px; height: 16px; color: var(--success); flex-shrink: 0; }
-        .pay-toast.error svg { color: var(--error); }
+        .price-card {
+            flex: 1; min-width: 220px; background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: 14px; padding: 24px; box-shadow: var(--shadow); position: relative;
+        }
+        .price-card.featured { border: 2px solid var(--accent); box-shadow: var(--glow); }
+        .price-tag {
+            position: absolute; top: -11px; left: 50%; transform: translateX(-50%);
+            font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+            color: #fff; background: var(--accent-grad); padding: 3px 11px; border-radius: 20px;
+        }
+        .price-kicker { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); }
+        .price-card.featured .price-kicker { color: var(--accent-strong); }
+        .price-amount { font-size: 34px; font-weight: 700; margin: 6px 0; }
+        .price-desc { font-size: 12.5px; color: var(--text-muted); }
+        .price-note { font-size: 11.5px; color: var(--text-faint); margin-top: 4px; }
 
         /* ── Custom request ── */
         .custom-section {
-            margin-bottom: 48px;
+            background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius-lg);
+            box-shadow: var(--shadow); padding: 28px; margin: 8px 0 44px;
         }
+        .custom-section h2 { font-size: 18px; font-weight: 700; }
+        .custom-section > p { font-size: 13px; color: var(--text-muted); margin-top: 6px; }
+        .iframe-wrap { margin-top: 16px; border-radius: 12px; overflow: hidden; border: 1px solid var(--border); }
+        .iframe-wrap iframe { width: 100%; height: 480px; border: 0; display: block; background: #fff; }
 
-        .custom-section h2 {
-            font-size: 15px;
-            font-weight: 600;
-            color: var(--text);
-            margin-bottom: 6px;
-            letter-spacing: -0.01em;
+        /* ── Post-purchase toast ── */
+        .pay-toast {
+            position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+            display: flex; align-items: center; gap: 9px; z-index: 50;
+            background: var(--bg-card); border: 1px solid var(--success-border); color: var(--text);
+            box-shadow: var(--shadow-lg); border-radius: 12px; padding: 12px 16px; font-size: 13px;
+            animation: bl-in .25s ease-out;
         }
-
-        .custom-section p {
-            font-size: 13px;
-            color: var(--text-muted);
-            margin-bottom: 20px;
-        }
-
-        .iframe-wrap {
-            border-radius: var(--radius-lg);
-            overflow: hidden;
-            border: 1px solid var(--border);
-        }
-
-        .iframe-wrap iframe {
-            width: 100%;
-            height: 560px;
-            display: block;
-            border: none;
-        }
+        .pay-toast svg { width: 17px; height: 17px; color: var(--success); }
+        .pay-toast.error { border-color: var(--error-border); }
+        .pay-toast.error svg { color: var(--error); }
 
         /* ── Footer ── */
         .site-footer {
-            margin-top: auto;
-            border-top: 1px solid var(--border);
-            padding: 20px 0;
-            text-align: center;
-            font-size: 12px;
-            color: var(--text-faint);
+            border-top: 1px solid var(--border); padding: 20px 0; text-align: center;
+            font-size: 12px; color: var(--text-faint);
         }
+        .site-footer a { color: var(--text-muted); }
+        .site-footer a:hover { color: var(--accent); }
 
-        .site-footer a {
-            color: var(--text-muted);
-            text-decoration: none;
-            transition: color 0.15s;
-        }
-
-        .site-footer a:hover {
-            color: var(--text);
-        }
-
-        /* ── Trust cards (homepage) ── */
-        .trust-grid {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 16px;
-            margin-bottom: 28px;
-        }
-
-        @media (max-width: 680px) {
-            .trust-grid { grid-template-columns: 1fr; }
-        }
-
-        .trust-card {
-            padding: 22px;
-        }
-
-        .trust-card .trust-icon {
-            width: 30px;
-            height: 30px;
-            border-radius: 8px;
-            background: var(--accent-glow);
-            border: 1px solid rgba(139,92,246,0.2);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 12px;
-        }
-
-        .trust-card .trust-icon svg {
-            width: 16px;
-            height: 16px;
-            color: var(--accent);
-        }
-
-        .trust-card h3 {
-            font-size: 13.5px;
-            font-weight: 600;
-            color: var(--text);
-            margin-bottom: 8px;
-            letter-spacing: -0.01em;
-        }
-
-        .trust-card p {
-            font-size: 12.5px;
-            color: var(--text-muted);
-            line-height: 1.65;
-        }
-
-        /* ── Guide pages ── */
-        .guide {
-            max-width: 720px;
-            margin: 40px auto 56px;
-        }
-
-        .guide h1 {
-            font-size: clamp(24px, 4vw, 32px);
-            font-weight: 700;
-            letter-spacing: -0.02em;
-            line-height: 1.2;
-            color: var(--text);
-            margin-bottom: 12px;
-        }
-
-        .guide .guide-lead {
-            font-size: 15px;
-            color: var(--text-muted);
-            margin-bottom: 28px;
-            line-height: 1.6;
-        }
-
-        .guide h2 {
-            font-size: 18px;
-            font-weight: 600;
-            color: var(--text);
-            margin: 28px 0 10px;
-            letter-spacing: -0.01em;
-        }
-
-        .guide p {
-            font-size: 14.5px;
-            color: var(--text-muted);
-            line-height: 1.7;
-            margin-bottom: 14px;
-        }
-
-        .guide ul {
-            list-style: none;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            margin: 0 0 16px;
-        }
-
-        .guide li {
-            font-size: 14px;
-            color: var(--text-muted);
-            padding-left: 18px;
-            position: relative;
-            line-height: 1.6;
-        }
-
+        /* ── Guide pages (shared chrome) ── */
+        .guide { max-width: 720px; margin: 0 auto; padding: 48px 0 8px; }
+        .guide h1 { font-size: 32px; font-weight: 700; letter-spacing: -.02em; line-height: 1.15; }
+        .guide .guide-lead { font-size: 17px; color: var(--text-muted); line-height: 1.6; margin: 16px 0 8px; }
+        .guide h2 { font-size: 20px; font-weight: 600; letter-spacing: -.01em; margin: 32px 0 6px; }
+        .guide p { font-size: 15px; color: var(--text); line-height: 1.75; margin: 12px 0; }
+        .guide ul { margin: 12px 0 12px 2px; list-style: none; }
+        .guide li { position: relative; padding-left: 22px; font-size: 15px; line-height: 1.7; margin: 8px 0; color: var(--text); }
         .guide li::before {
-            content: '';
-            position: absolute;
-            left: 0;
-            top: 9px;
-            width: 5px;
-            height: 5px;
-            border-radius: 50%;
-            background: var(--accent);
+            content: ""; position: absolute; left: 2px; top: 11px; width: 7px; height: 7px;
+            border-radius: 50%; background: var(--accent);
         }
-
         .guide .guide-cta {
-            margin-top: 32px;
-            padding: 20px 24px;
-            background: var(--accent-glow);
-            border: 1px solid rgba(139,92,246,0.25);
-            border-radius: var(--radius-lg);
-            text-align: center;
+            margin: 36px 0 8px; background: var(--bg-elevated); border: 1px solid var(--border);
+            border-radius: var(--radius-lg); padding: 24px 26px;
         }
-
-        .guide .guide-cta p {
-            color: var(--text);
-            font-size: 14px;
-            margin-bottom: 14px;
-        }
-
+        .guide .guide-cta p { margin: 0 0 14px; font-size: 15px; font-weight: 500; }
         .guide .guide-cta a {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            padding: 10px 20px;
-            background: var(--accent);
-            color: white;
-            font-family: inherit;
-            font-size: 13.5px;
-            font-weight: 600;
-            letter-spacing: -0.01em;
-            border: none;
-            border-radius: var(--radius);
-            text-decoration: none;
-            transition: background 0.15s;
+            display: inline-flex; align-items: center; gap: 8px; background: var(--accent-grad); color: #fff;
+            border-radius: 12px; font-size: 14px; font-weight: 600; padding: 11px 20px; box-shadow: var(--glow);
         }
-
-        .guide .guide-cta a:hover {
-            background: var(--accent-hover);
-        }
+        .guide .guide-cta a:hover { filter: brightness(1.04); color: #fff; }
 
         /* ── Animations ── */
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        @keyframes bl-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 
-        @keyframes slide-in {
-            from { opacity: 0; transform: translateY(6px); }
-            to   { opacity: 1; transform: translateY(0); }
+        /* ── Responsive ── */
+        @media (max-width: 900px) {
+            .container { padding: 0 22px; }
+            .hero-split { grid-template-columns: 1fr; gap: 32px; padding: 36px 0; }
+            .hero-copy h1 { font-size: 34px; }
+            .feature-strip { padding: 28px 22px; margin: 16px -22px; }
+            .feature-grid { grid-template-columns: 1fr; gap: 22px; }
+            .header-right { gap: 14px; }
+        }
+        @media (max-width: 560px) {
+            .hero-stats { gap: 20px; }
+            .navlink { display: none; }
         }
     </style>
 </head>
@@ -1259,24 +576,26 @@ _SITE_OPEN = '''<!DOCTYPE html>
             <div class="header-inner">
                 <a class="logo" href="/">
                     <div class="logo-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="3" y="3" width="18" height="18" rx="3"/>
-                            <line x1="9" y1="9" x2="15" y2="9"/>
-                            <line x1="9" y1="13" x2="12" y2="13"/>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M5 6.5h14M5 17.5h9"/>
+                            <rect x="4" y="9.6" width="13" height="4.8" rx="1.4" fill="#fff" stroke="none"/>
                         </svg>
                     </div>
-                    <span class="logo-name">Redact</span>
+                    <span class="logo-name">Redactly</span>
                 </a>
                 <div class="header-right">
-                    {% if usage_count %}
-                    <span class="usage-badge">{{ usage_count }} statements processed</span>
-                    {% endif %}
+                    <a class="navlink" href="/#how">How it works</a>
+                    <a class="navlink" href="/#pricing">Pricing</a>
+                    {% if payments_on %}
+                    <a href="/#tool" class="credits-ind header-credits{% if credits_low %} low{% endif %}" title="Redactions remaining">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
+                        <span class="credits-text">{{ credits_label }}</span>
+                    </a>
+                    {% elif usage_count %}<span class="usage-badge">{{ usage_count }} redacted</span>{% endif %}
                     <button class="theme-toggle" id="theme-toggle" title="Toggle theme" onclick="toggleTheme()">
-                        <!-- Moon (shown in dark mode) -->
                         <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
                         </svg>
-                        <!-- Sun (shown in light mode) -->
                         <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <circle cx="12" cy="12" r="5"/>
                             <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
@@ -1299,180 +618,176 @@ _HOMEPAGE_BODY = '''
             {
               "@context": "https://schema.org",
               "@type": "WebApplication",
-              "name": "Redact Statements",
+              "name": "Redactly",
               "applicationCategory": "UtilityApplication",
               "operatingSystem": "Web",
-              "offers": {"@type": "Offer", "price": "0", "priceCurrency": "GBP"},
+              "offers": {"@type": "Offer", "price": "0", "priceCurrency": "GBP", "description": "First document free, then 99p per document or £7.99 for ten."},
               "description": "Redact bank and credit card statement PDFs with true redaction: keep only chosen transactions visible for rental applications and expense claims. Supports AMEX, Barclaycard, HSBC, Revolut, Wise and other UK banks."
             }
             </script>
-            <!-- Hero -->
-            <section class="hero">
-                <div class="hero-eyebrow">
-                    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
-                    True redaction · Files deleted after download
-                </div>
-                <h1>Share your statement.<br>Not your whole life.</h1>
-                <p>Landlords and employers only need to see certain transactions. Upload your statement, choose what stays visible, and every other transaction is permanently blacked out — the text underneath is destroyed, not just covered.</p>
-            </section>
 
-            <!-- Main two-col -->
-            <div class="main-grid">
-
-                <!-- How it works -->
-                <div class="card how-card">
-                    <h2>How it works</h2>
-                    <p>Upload one or more statement PDFs, choose what should stay visible, and download redacted files as they finish.</p>
-                    <ul class="how-list">
-                        <li>Multi-file upload — process several months at once</li>
-                        <li>Auto-detects AMEX, Barclaycard, and UK bank statement formats</li>
-                        <li>Each file is ready to download as soon as it's done</li>
-                        <li>Filename shows the whitelisted total for easy reference</li>
-                    </ul>
-                    <div class="example-keywords">
-                        <p>Example keywords</p>
-                        <code>Tfl Travel, Hyperoptic, Your-Saving</code>
+            <!-- Split hero -->
+            <section class="hero-split">
+                <div class="hero-copy">
+                    <span class="hero-badge">🔒 Private by design</span>
+                    <h1>Share the line.<br>Not the ledger.</h1>
+                    <p class="hero-sub">Redactly permanently blacks out every transaction you don't want a landlord or employer to see — the text underneath is destroyed, not just covered. Your first statement is free.</p>
+                    <div class="hero-cta-row">
+                        <a href="#tool" class="btn-primary">Redact my statement</a>
+                        <span class="hero-note">Files deleted after download</span>
+                    </div>
+                    <div class="hero-stats">
+                        <div class="stat"><div class="stat-num">{{ usage_count or '—' }}</div><div class="stat-label">statements redacted</div></div>
+                        <div class="stat"><div class="stat-num">0</div><div class="stat-label">stored, ever</div></div>
+                        <div class="stat"><div class="stat-num">£0</div><div class="stat-label">for your first doc</div></div>
                     </div>
                 </div>
 
-                <!-- Form -->
-                <div class="card form-card">
-                    <h2>Redact statements</h2>
-                    <div class="form-stack">
+                <!-- Live tool card -->
+                <div class="tool-card" id="tool">
+                    <div class="tool-head">
+                        <span class="tool-title">Redact a statement</span>
+                        <span id="credits-badge" class="credits-ind card-credits{% if credits_low %} low{% endif %}" data-payments="{{ 'on' if payments_on else 'off' }}">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
+                            <span class="credits-text">{{ credits_label }}</span>
+                        </span>
+                    </div>
 
-                        <!-- Provider -->
-                        <div class="field">
-                            <label>Card provider</label>
-                            <select id="provider">
-                                {% for value, display in providers %}
-                                <option value="{{ value }}" {% if value == 'auto' %}selected{% endif %}>{{ display }}</option>
-                                {% endfor %}
-                            </select>
-                            <span class="hint">Auto-detect works for most statements</span>
+                    <!-- File picker -->
+                    <div id="drop-zone" class="drop-zone" onclick="document.getElementById('pdf-input').click()">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                            <polyline points="17 8 12 3 7 8"/>
+                            <line x1="12" y1="3" x2="12" y2="15"/>
+                        </svg>
+                        <p class="drop-label">Drop your PDF or <strong>browse</strong></p>
+                        <p class="drop-sub">AMEX · Barclaycard · UK banks</p>
+                        <input id="pdf-input" type="file" accept=".pdf" multiple style="display:none">
+                    </div>
+                    <ul id="file-list" class="file-list"></ul>
+
+                    <!-- Provider -->
+                    <div class="field">
+                        <label for="provider">Card provider</label>
+                        <select id="provider">
+                            {% for value, display in providers %}
+                            <option value="{{ value }}" {% if value == 'auto' %}selected{% endif %}>{{ display }}</option>
+                            {% endfor %}
+                        </select>
+                        <span class="hint">Auto-detect works for most statements</span>
+                    </div>
+                    <div id="barclaycard-tip" class="provider-tip">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                        </svg>
+                        <span><strong>Barclaycard</strong> — precise row-by-row redaction with financial privacy. Enter merchant keywords.</span>
+                    </div>
+
+                    <!-- Mode -->
+                    <div class="field">
+                        <label>What do you need this for?</label>
+                        <div class="mode-group" id="mode-group">
+                            <label class="mode-card checked" data-mode="custom">
+                                <input type="radio" name="mode" value="custom" checked>
+                                <span class="mode-title">Expenses</span>
+                            </label>
+                            <label class="mode-card" data-mode="landlord">
+                                <input type="radio" name="mode" value="landlord">
+                                <span class="mode-title">Landlord</span>
+                            </label>
+                            <label class="mode-card" data-mode="custom">
+                                <input type="radio" name="mode" value="custom">
+                                <span class="mode-title">Custom</span>
+                            </label>
                         </div>
-
-                        <!-- Barclaycard tip -->
-                        <div id="barclaycard-tip" class="provider-tip">
+                        <div id="landlord-explainer" class="mode-explainer">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
                             </svg>
-                            <span><strong>Barclaycard</strong> — precise row-by-row redaction with financial privacy. Enter merchant keywords.</span>
+                            <span><strong>Keeps:</strong> money coming in (salary, transfers), your balances, and anything you whitelist (e.g. rent). <strong>Hides:</strong> all other spending. For bank statements, not credit cards.</span>
                         </div>
+                    </div>
 
-                        <!-- File picker -->
-                        <div class="field">
-                            <label>PDF statements <span>(one or more)</span></label>
-                            <div id="drop-zone" class="drop-zone" onclick="document.getElementById('pdf-input').click()">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
-                                    <polyline points="17 8 12 3 7 8"/>
-                                    <line x1="12" y1="3" x2="12" y2="15"/>
-                                </svg>
-                                <p class="drop-label">Drop PDFs here or <strong>browse</strong></p>
-                                <p class="drop-sub">PDF files only</p>
-                                <input id="pdf-input" type="file" accept=".pdf" multiple style="display:none">
-                            </div>
-                            <ul id="file-list" class="file-list"></ul>
+                    <!-- Keywords -->
+                    <div class="field">
+                        <label for="keywords">Keep transactions matching <span>(comma-separated)</span></label>
+                        <input id="keywords" type="text" placeholder="e.g. rent, Tfl Travel, Hyperoptic">
+                    </div>
+
+                    <!-- Enhanced privacy -->
+                    <div class="toggle-row">
+                        <div class="toggle-wrap">
+                            <input type="checkbox" id="enhanced_privacy">
+                            <label class="toggle-track" for="enhanced_privacy"><div class="toggle-thumb"></div></label>
                         </div>
+                        <label for="enhanced_privacy" class="toggle-label-text" style="cursor:pointer">
+                            Enhanced financial privacy
+                            <small>Also redact balances, credit limit, and rates</small>
+                        </label>
+                    </div>
 
-                        <!-- Mode selector -->
-                        <div class="field">
-                            <label>What do you need this for?</label>
-                            <div class="mode-group" id="mode-group">
-                                <label class="mode-card checked" data-mode="custom">
-                                    <input type="radio" name="mode" value="custom" checked>
-                                    <span class="mode-title">Expense claim</span>
-                                    <span class="mode-desc">Keep only transactions matching your keywords.</span>
-                                </label>
-                                <label class="mode-card" data-mode="landlord">
-                                    <input type="radio" name="mode" value="landlord">
-                                    <span class="mode-title">Landlord / rental</span>
-                                    <span class="mode-desc">Keep income, balances, and rent. Hide other spending.</span>
-                                </label>
-                                <label class="mode-card" data-mode="custom">
-                                    <input type="radio" name="mode" value="custom">
-                                    <span class="mode-title">Custom</span>
-                                    <span class="mode-desc">Keep only the transactions you specify.</span>
-                                </label>
-                            </div>
-                            <div id="landlord-explainer" class="mode-explainer">
-                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                                    <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
-                                </svg>
-                                <span><strong>Keeps:</strong> money coming in (salary, transfers), your balances, and any transactions you whitelist (e.g. rent). <strong>Hides:</strong> all other spending.</span>
-                            </div>
-                            <span class="hint">Landlord mode is for bank statements — not credit cards</span>
-                        </div>
-
-                        <!-- Keywords -->
-                        <div class="field">
-                            <label>Keywords to keep <span>(comma-separated)</span></label>
-                            <input id="keywords" type="text" placeholder="e.g. Tfl Travel, Hyperoptic, Your-Saving">
-                        </div>
-
-                        <!-- Enhanced privacy toggle -->
-                        <div class="toggle-row">
-                            <div class="toggle-wrap">
-                                <input type="checkbox" id="enhanced_privacy">
-                                <label class="toggle-track" for="enhanced_privacy">
-                                    <div class="toggle-thumb"></div>
-                                </label>
-                            </div>
-                            <label for="enhanced_privacy" class="toggle-label-text" style="cursor:pointer">
-                                Enhanced financial privacy
-                                <small>Also redact balances, credit limit, and rates</small>
-                            </label>
-                        </div>
-
-                        <!-- Submit -->
-                        <button id="submit-btn" class="btn-primary" onclick="processFiles()">
-                            <span id="btn-text">Redact PDFs</span>
+                    <!-- Submit -->
+                    <div class="field">
+                        <button id="submit-btn" class="btn-primary btn-block" onclick="processFiles()">
+                            <span id="btn-text">Redact my statement</span>
                             <div id="btn-spinner" class="spinner"></div>
                         </button>
+                    </div>
 
+                    <!-- Results -->
+                    <div id="results-section" class="results-section" style="display:none">
+                        <div id="results" class="results-list"></div>
                     </div>
-                </div>
-            </div>
-
-            <!-- Trust -->
-            <section class="trust-grid">
-                <div class="card trust-card">
-                    <div class="trust-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/>
-                        </svg>
-                    </div>
-                    <h3>True redaction</h3>
-                    <p>We use PDF redaction annotations that destroy the text underneath. Copy-paste and text extraction find nothing — unlike drawing black boxes, which can be reversed.</p>
-                </div>
-                <div class="card trust-card">
-                    <div class="trust-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
-                        </svg>
-                    </div>
-                    <h3>Nothing is kept</h3>
-                    <p>Your statement is processed in memory on our server and the file is deleted immediately after you download it. We never read, store, or log your transactions.</p>
-                </div>
-                <div class="card trust-card">
-                    <div class="trust-icon">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M20 6L9 17l-5-5"/>
-                        </svg>
-                    </div>
-                    <h3>No account needed</h3>
-                    <p>No signup, no email, no tracking of who you are. Upload, redact, download, done.</p>
                 </div>
             </section>
 
-            <!-- Results -->
-            <div id="results-section" class="results-section" style="display:none">
-                <p class="results-heading">Redacted files</p>
-                <div id="results" class="results-list"></div>
-            </div>
+            <!-- Feature strip / how it works -->
+            <section class="feature-strip" id="how">
+                <div class="feature-grid">
+                    <div class="feature">
+                        <div class="feature-ic">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0110 0v4"/></svg>
+                        </div>
+                        <div><h3>True redaction</h3><p>Text underneath is destroyed. Extraction finds nothing.</p></div>
+                    </div>
+                    <div class="feature">
+                        <div class="feature-ic">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                        </div>
+                        <div><h3>Nothing stored</h3><p>Processed in memory, deleted after download.</p></div>
+                    </div>
+                    <div class="feature">
+                        <div class="feature-ic">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 00-4-4H6a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="17" y1="8" x2="22" y2="13"/><line x1="22" y1="8" x2="17" y2="13"/></svg>
+                        </div>
+                        <div><h3>No account</h3><p>No signup, no email, no tracking.</p></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Pricing -->
+            <section class="pricing" id="pricing">
+                <h2>Pay only for what you redact</h2>
+                <p class="pricing-sub">First document free. No subscription.</p>
+                <div class="price-row">
+                    <div class="price-card">
+                        <div class="price-kicker">Single</div>
+                        <div class="price-amount">99p</div>
+                        <div class="price-desc">One redacted document</div>
+                        <div class="price-note">≈ 99¢ · €0.99</div>
+                    </div>
+                    <div class="price-card featured">
+                        <div class="price-tag">Best value</div>
+                        <div class="price-kicker">Pack of 10</div>
+                        <div class="price-amount">£7.99</div>
+                        <div class="price-desc">Ten documents · 80p each</div>
+                        <div class="price-note">Credits never expire</div>
+                    </div>
+                </div>
+            </section>
 
             <!-- Custom request -->
-            <div class="card custom-section" id="custom-request" style="padding:28px">
+            <div class="custom-section" id="custom-request">
                 <h2>Need a custom solution?</h2>
                 <p>Get in touch if you need a tailored redaction workflow for your business or use case.</p>
                 <div class="iframe-wrap">
@@ -1487,19 +802,19 @@ _SITE_MID = '''
 
     <footer class="site-footer">
         <div class="container">
-            &copy; 2024 Redact &middot; <a href="/guides">Guides</a> &middot; All rights reserved.
+            © 2026 Redactly · True redaction, nothing stored · <a href="/guides">Guides</a>
         </div>
     </footer>
 </div>
 
 <script>
 // --- Theme toggle (shared across homepage + guide pages) ---
-// Reads saved preference; falls back to system default (no class = system)
+// Redactly defaults to light; a saved preference or the OS setting still wins.
 (function() {
     const saved = localStorage.getItem('theme');
     if (saved === 'dark')  document.documentElement.classList.add('dark');
     if (saved === 'light') document.documentElement.classList.add('light');
-    // no saved pref → no class → @media prefers-color-scheme kicks in
+    // no saved pref → no class → light by default (system dark honoured via @media)
 })();
 
 function toggleTheme() {
@@ -1659,7 +974,7 @@ function renderFileList() {
     fileList.innerHTML = files.map((f, i) =>
         `<li class="file-item">
             <span>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#8b5cf6;flex-shrink:0">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--accent);flex-shrink:0">
                     <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/>
                 </svg>
                 <span class="file-name">${f.name}</span>
@@ -1723,6 +1038,7 @@ async function processFiles() {
             // since the remaining files would 402 too.
             if (data.error === 'no_credits') {
                 track('paywall_shown');
+                updateCreditsBadge(0);
                 showPaywall(card, file.name);
                 break;
             } else if (data.error) {
@@ -1741,6 +1057,7 @@ async function processFiles() {
                     ? `${data.kept_count} transaction${data.kept_count !== 1 ? 's' : ''} · £${data.total.toFixed(2)}`
                     : `£${data.total.toFixed(2)} total`;
                 updateCard(card, 'success', data.filename, data.download_url, detail);
+                if (data.credits_remaining !== undefined) updateCreditsBadge(data.credits_remaining);
                 if (data.provider_detected === false) showBankRequestBanner();
                 if (data.beta) showBetaBanner();
             }
@@ -1826,11 +1143,11 @@ function showPaywall(card, filename) {
         <div class="result-info">
             <p class="result-name">${filename}</p>
             <p class="result-detail">You've used your free document.</p>
-            <p class="result-detail" style="margin-top:6px">£2.99 for one document · £9.99 for five. No account needed.</p>
+            <p class="result-detail" style="margin-top:6px">99p for one document · £7.99 for ten. No account needed.</p>
         </div>
         <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
-            <a href="/buy?pack=single" class="btn-download" style="background:var(--accent);color:#fff;border-color:var(--accent);justify-content:center;padding:8px 14px">Buy £2.99</a>
-            <a href="/buy?pack=pack5" style="font-size:12px;color:var(--text-muted);text-decoration:underline;text-align:center">5 for £9.99</a>
+            <a href="/buy?pack=single" class="btn-download" style="background:var(--accent);color:#fff;border-color:var(--accent);justify-content:center;padding:8px 14px">Buy 99p</a>
+            <a href="/buy?pack=pack10" style="font-size:12px;color:var(--text-muted);text-decoration:underline;text-align:center">10 for £7.99</a>
         </div>`;
 }
 
@@ -1894,6 +1211,18 @@ function shakeField(id) {
     el.style.animation = 'none';
     el.style.outline = '2px solid var(--error)';
     setTimeout(() => { el.style.outline = ''; }, 1200);
+}
+
+// Live remaining-balance indicator on the tool card. No-ops when payments are
+// off (the badge just reads "First one free"). Never shows a negative count.
+function updateCreditsBadge(n) {
+    const host = document.getElementById('credits-badge');
+    if (!host || host.dataset.payments !== 'on') return;
+    const left = Math.max(n | 0, 0);
+    const label = left + ' document' + (left === 1 ? '' : 's') + ' left';
+    // Keep every indicator (header chip + tool-card badge) in sync.
+    document.querySelectorAll('.credits-text').forEach(el => { el.textContent = label; });
+    document.querySelectorAll('.credits-ind').forEach(el => { el.classList.toggle('low', left <= 0); });
 }
 </script>
 '''
@@ -2021,12 +1350,31 @@ def process_single_file(file, keywords, provider, enhanced_privacy, mode='custom
 def index():
     usage_count = update_usage_counter()
     providers   = get_all_providers()
+    # Per-visitor credit indicator. Only meaningful when payments are on; when
+    # off the tool is free/unlimited and we keep the plain "First one free" badge.
+    payments_on = payments.payments_enabled()
+    raw_credits = payments.get_credits(request) if payments_on else None
+    credits_fresh = raw_credits is None  # brand-new visitor, no cookie yet
+    credits_remaining = (payments.FREE_CREDITS if raw_credits is None
+                         else raw_credits) if payments_on else None
+    # Human label for the credit indicator, rendered into the header + tool card.
+    if not payments_on or credits_fresh:
+        credits_label = 'First one free'
+    else:
+        credits_label = '%d document%s left' % (
+            credits_remaining, '' if credits_remaining == 1 else 's')
+    credits_low = bool(payments_on and not credits_fresh and credits_remaining == 0)
     return render_template_string(HTML_TEMPLATE,
-        title='Redact Statements — Share Bank & Card Statements Without Oversharing',
+        title='Redactly — Share Bank & Card Statements Without Oversharing',
         meta_description='Blackout every transaction on your AMEX or Barclaycard statement except the ones you choose. For rental applications and expense claims. True redaction — text is destroyed, not hidden. Files deleted after download.',
         canonical=_base_url() + '/',
         usage_count=usage_count,
-        providers=providers)
+        providers=providers,
+        payments_on=payments_on,
+        credits_fresh=credits_fresh,
+        credits_remaining=credits_remaining,
+        credits_label=credits_label,
+        credits_low=credits_low)
 
 
 @app.route('/guides/<slug>')
@@ -2047,7 +1395,7 @@ def guide_page(slug):
         'headline': guide['title'],
         'description': guide['meta_description'],
         'url': _base_url() + '/guides/' + slug,
-        'publisher': {'@type': 'Organization', 'name': 'Redact Statements',
+        'publisher': {'@type': 'Organization', 'name': 'Redactly',
                       'url': _base_url()},
     }) + '</script>'
     template = _SITE_OPEN + jsonld + guide['html_body'] + _SITE_MID + _SITE_END
@@ -2074,7 +1422,7 @@ def guides_index():
     )
     template = _SITE_OPEN + body + _SITE_MID + _SITE_END
     return render_template_string(template,
-        title='Guides — Redact Statements',
+        title='Guides — Redactly',
         meta_description='Guides to redacting bank and card statements for rental applications and expense claims.',
         canonical=_base_url() + '/guides')
 
@@ -2125,14 +1473,16 @@ def llms_txt():
         f"- [{g['title']}]({base}/guides/{slug}): {g['meta_description']}"
         for slug, g in GUIDES.items()
     )
-    body = f"""# Redact Statements
+    body = f"""# Redactly
 
-> Free web tool that redacts bank and credit-card statement PDFs using true
+> Web tool that redacts bank and credit-card statement PDFs using true
 > redaction (text destroyed, not covered). Users keep only the transactions
 > they choose visible — for UK rental applications and expense claims — while
 > names, statement periods, and balances stay intact.
 
 Key facts:
+- Pricing: the first document is free; then 99p per document, or £7.99 for a
+  pack of ten. No subscription and no account.
 - Supported statements: American Express, Barclaycard, HSBC, Revolut, Wise,
   plus a generic parser for other UK bank layouts (beta).
 - Landlord mode keeps income, balances, and whitelisted rows (e.g. rent) and
@@ -2194,7 +1544,7 @@ def redact_endpoint():
             mode=mode, keep_credits=is_landlord
         )
         display_name = os.path.basename(redacted_path)
-        resp = jsonify({
+        payload = {
             'filename':         display_name,
             'download_url':     f'/download/{redacted_path}',
             'total':            total,
@@ -2202,10 +1552,15 @@ def redact_endpoint():
             'provider_detected': provider_detected,
             'provider':         detected_provider,
             'beta':             bool(beta),
-        })
-        # Spend one credit only after a successful redaction (never on failure).
+        }
+        # Spend one credit only after a successful redaction (never on failure),
+        # and tell the client the new balance so it can update the counter.
         if enabled:
-            payments.set_credits_cookie(resp, max(credits - 1, 0))
+            remaining = max(credits - 1, 0)
+            payload['credits_remaining'] = remaining
+        resp = jsonify(payload)
+        if enabled:
+            payments.set_credits_cookie(resp, remaining)
         return resp
     except LandlordCardError as e:
         # Friendly 400: landlord mode doesn't apply to credit-card statements.
@@ -2235,7 +1590,7 @@ def download_file(filename):
 
 @app.route('/buy', methods=['GET'])
 def buy():
-    """Create a Stripe Checkout Session for ?pack=single|pack5 and redirect to it."""
+    """Create a Stripe Checkout Session for ?pack=single|pack10 and redirect to it."""
     if not payments.payments_enabled():
         abort(404)
     pack = request.args.get('pack', 'single')

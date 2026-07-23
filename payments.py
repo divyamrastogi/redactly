@@ -4,7 +4,7 @@ ALL payment behaviour is OFF unless:
 
     PAYMENTS_ENABLED=1
     AND every one of STRIPE_SECRET_KEY, STRIPE_WEBHOOK_SECRET,
-        STRIPE_PRICE_SINGLE, STRIPE_PRICE_PACK5 is set.
+        STRIPE_PRICE_SINGLE, STRIPE_PRICE_PACK10 is set.
 
 When ``payments_enabled()`` is False, app.py skips every payment code path —
 no cookie is read or written and ``stripe`` is never imported — so the app runs
@@ -38,14 +38,14 @@ _REQUIRED_STRIPE_VARS = (
     'STRIPE_SECRET_KEY',
     'STRIPE_WEBHOOK_SECRET',
     'STRIPE_PRICE_SINGLE',
-    'STRIPE_PRICE_PACK5',
+    'STRIPE_PRICE_PACK10',
 )
 
 # Every visitor starts here — "First document free".
 FREE_CREDITS = 1
 
 # Credits granted by each paid pack.
-PACK_CREDITS = {'single': 1, 'pack5': 5}
+PACK_CREDITS = {'single': 1, 'pack10': 10}
 
 # File-backed records (gitignored runtime state).
 CONSUMED_SESSIONS_FILE = 'consumed_sessions.txt'
@@ -102,7 +102,8 @@ def set_credits_cookie(response, credits):
     token = _serializer().dumps({'credits': int(credits)})
     response.set_cookie(
         COOKIE_NAME, token,
-        httponly=True,
+        httponly=True,                                   # unreadable to JS
+        secure=_site_url().startswith('https'),          # HTTPS-only in prod
         samesite='Lax',
         max_age=60 * 60 * 24 * 365,  # 1 year
     )
@@ -166,14 +167,14 @@ def _stripe():
 
 
 def create_checkout_session(pack):
-    """Create a Stripe Checkout Session for ``pack`` ('single' | 'pack5') and
+    """Create a Stripe Checkout Session for ``pack`` ('single' | 'pack10') and
     return it (has ``.url`` / ``.id``). Raises KeyError/ValueError for unknown
     packs."""
     if pack not in PACK_CREDITS:
         raise ValueError(f'unknown pack: {pack!r}')
     price_id = {
         'single': os.environ['STRIPE_PRICE_SINGLE'],
-        'pack5': os.environ['STRIPE_PRICE_PACK5'],
+        'pack10': os.environ['STRIPE_PRICE_PACK10'],
     }[pack]
     base = _site_url()
     return _stripe().checkout.Session.create(
@@ -193,7 +194,7 @@ def retrieve_session(session_id):
 
 
 def credits_for_session(session):
-    """How many credits a paid Checkout Session grants (1 or 5), read from the
+    """How many credits a paid Checkout Session grants (1 or 10), read from the
     ``pack`` metadata stamped at creation. Falls back to a single credit if the
     metadata is missing. Tolerates Stripe StripeObjects, plain dicts, and
     SimpleNamespace-style fakes used in tests."""
