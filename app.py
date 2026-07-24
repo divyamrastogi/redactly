@@ -787,7 +787,7 @@ _HOMEPAGE_BODY = '''
                         </div>
                         <label for="enhanced_privacy" class="toggle-label-text" style="cursor:pointer">
                             Enhanced financial privacy
-                            <small>Also redact balances, credit limit, and rates</small>
+                            <small>Also redact balances, credit limit, and rates — on bank statements, personal details too (card numbers, contact info; landlord mode keeps your name &amp; account number visible as proof)</small>
                         </label>
                     </div>
 
@@ -1467,6 +1467,10 @@ def process_single_file(file, keywords, provider, enhanced_privacy, mode='custom
     + optional keyword whitelist). ``keep_credits`` is forwarded to the bank /
     barclaycard parsers. Raises ``LandlordCardError`` if landlord mode targets a
     credit-card statement (amex_uk / barclaycard) — the caller returns a 400.
+
+    ``enhanced_privacy`` on the generic-bank path enables the Presidio PII pass
+    (pii_mode='enforce', degrading to 'off' with a warning when presidio isn't
+    installed) plus balance/summary redaction (redact_balances=True).
     """
     import uuid, fitz as _fitz
 
@@ -1530,8 +1534,22 @@ def process_single_file(file, keywords, provider, enhanced_privacy, mode='custom
 
         if is_generic_bank:
             # Generic UK bank statement parser (BETA) — layout-driven.
+            # Enhanced privacy adds the Presidio PII pass (name, account
+            # numbers, card numbers — landlord mode auto-preserves ownership
+            # details) and the balance/summary redaction. If presidio isn't
+            # installed the PII half degrades gracefully to balances-only.
+            pii_mode = 'off'
+            if enhanced_privacy:
+                from pii_layer import _HAS_PRESIDIO
+                if _HAS_PRESIDIO:
+                    pii_mode = 'enforce'
+                else:
+                    app.logger.warning(
+                        'enhanced_privacy requested but presidio-analyzer is '
+                        'not installed — applying balance redaction only')
             redacted_path, total, kept = redact_bank_generic(
-                tmp_in, tmp_out, keywords, keep_credits=keep_credits)
+                tmp_in, tmp_out, keywords, keep_credits=keep_credits,
+                pii_mode=pii_mode, redact_balances=enhanced_privacy)
             kept_count = len(kept)
             beta = True
         elif is_barclaycard:
