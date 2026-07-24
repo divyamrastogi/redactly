@@ -1,8 +1,13 @@
 from flask import Flask, request, send_file, after_this_request, render_template_string, jsonify, abort, redirect, Response
 import os
 import re
+import json
+import base64
 import logging
+import urllib.request
+import urllib.error
 from datetime import datetime, timezone
+from werkzeug.utils import secure_filename
 from redact_transactions import redact_transactions
 from redact_generic import redact_pdf_generic
 from redact_financial_details import redact_barclaycard_with_privacy, redact_amex_with_privacy
@@ -549,6 +554,20 @@ _SITE_OPEN = '''<!DOCTYPE html>
         .contact-success svg { width: 20px; height: 20px; color: var(--success); flex-shrink: 0; margin-top: 1px; }
         .contact-success h3 { font-size: 14px; font-weight: 600; color: var(--text); }
         .contact-success p { font-size: 12.5px; color: var(--text-muted); margin-top: 3px; }
+        .cf-bonus { font-weight: 600; color: var(--success) !important; margin-top: 8px !important; }
+        /* Sample-statement file input */
+        .cf-file {
+            width: 100%; font-family: inherit; font-size: 13px; color: var(--text-muted);
+            background: var(--bg-elevated); border: 1px dashed var(--border);
+            border-radius: 12px; padding: 10px 12px; cursor: pointer;
+        }
+        .cf-file:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--tint); }
+        .cf-file::file-selector-button {
+            font-family: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+            margin-right: 12px; padding: 7px 14px; border: none; border-radius: 8px;
+            background: var(--tint); color: var(--accent-strong);
+        }
+        .cf-sample-field .hint { line-height: 1.5; margin-top: 8px; }
         @media (max-width: 520px) { .contact-grid { grid-template-columns: 1fr; } }
 
         /* ── Post-purchase toast ── */
@@ -842,6 +861,7 @@ _HOMEPAGE_BODY = '''
                     <div>
                         <h3>Thanks — we've got it.</h3>
                         <p>We'll get back to you at the email you provided.</p>
+                        <p class="cf-bonus" id="cf-bonus" hidden></p>
                     </div>
                 </div>
 
@@ -869,6 +889,11 @@ _HOMEPAGE_BODY = '''
                     <div class="field">
                         <label for="cf-details">A few details</label>
                         <textarea id="cf-details" class="cf-input cf-textarea" name="details" required rows="4" placeholder="Tell us a little about what you need."></textarea>
+                    </div>
+                    <div class="field cf-sample-field">
+                        <label for="cf-sample">Sample statement <span>· optional · earn 5 free redactions</span></label>
+                        <input id="cf-sample" class="cf-file" name="sample" type="file" accept="application/pdf,.pdf">
+                        <span class="hint">From a bank we don't support yet? Attach a statement PDF and we'll add <strong>5 free redactions</strong> as a thank-you. Unlike the redaction tool, a sample you share here is emailed to us to help us build support for your bank — <strong>not stored on the site</strong>. Feel free to black out your account number first; we only need the transaction layout.</span>
                     </div>
                     <button type="submit" class="btn-primary btn-block" id="cf-submit">Send message</button>
                     <p class="contact-error" id="contact-error" hidden>Something went wrong. Please try again, or email us at <a href="mailto:divyamrastogi2@gmail.com">divyamrastogi2@gmail.com</a>.</p>
@@ -1306,10 +1331,14 @@ function updateCreditsBadge(n) {
 }
 
 // --- "Need a custom solution?" contact form ---
-// Posts straight to Supabase REST with the PUBLISHABLE key. That key is safe in
-// the browser because the redactly_contact_submissions table's RLS allows insert
-// only — it can't read, update, or delete anything. A Postgres trigger then
-// emails divyamrastogi2@gmail.com via Brevo. No content ever hits the Flask app.
+// Two paths:
+//  • No sample attached → post straight to Supabase REST with the PUBLISHABLE
+//    key. Safe in the browser: the table's RLS allows insert only. A Postgres
+//    trigger emails us via Brevo. No content hits the Flask app.
+//  • Sample PDF attached → post multipart to /contact-sample. Flask detects the
+//    provider, grants a one-time +5 bonus for an unsupported statement, and
+//    emails the PDF to us (never stored). Credits need Flask's signed cookie,
+//    hence the separate path.
 (function () {
     var CONTACT_SUPABASE_URL = 'https://pnjsyklmibspekxgslos.supabase.co';
     var CONTACT_SUPABASE_KEY = 'sb_publishable_K0QR3oL-s0n6PqsPIrJh2g_vCuBDTEE';
@@ -1319,18 +1348,18 @@ function updateCreditsBadge(n) {
     if (!form) return;
     var success = document.getElementById('contact-success');
     var errorMsg = document.getElementById('contact-error');
+    var bonus = document.getElementById('cf-bonus');
+    var fileInput = document.getElementById('cf-sample');
     var button = document.getElementById('cf-submit');
+
+    var NON_REWARD_NOTES = {
+        already_supported: "We already support that provider, so no bonus this time — but thank you!",
+        already_claimed: "You've already claimed the sample bonus — thanks again!",
+    };
 
     form.addEventListener('submit', function (e) {
         e.preventDefault();
         if (!form.reportValidity()) return;
-
-        var payload = {
-            name: form.elements.name.value.trim(),
-            email: form.elements.email.value.trim(),
-            project_type: form.elements.project_type.value,
-            details: form.elements.details.value.trim(),
-        };
 
         errorMsg.hidden = true;
         button.disabled = true;
@@ -1343,8 +1372,52 @@ function updateCreditsBadge(n) {
             button.textContent = original;
         };
 
-        // New sb_publishable_ keys use the apikey header only; legacy JWT (eyJ…)
-        // keys would also need Authorization: Bearer.
+        // data === null for the Supabase path (no reward info); an object for the
+        // /contact-sample path.
+        var done = function (data) {
+            form.hidden = true;
+            if (success) success.hidden = false;
+            if (data && bonus) {
+                if (data.rewarded) {
+                    bonus.textContent = '🎉 ' + (data.bonus_credits || 5) + ' free redactions added — enjoy!';
+                    bonus.style.color = '';
+                    bonus.hidden = false;
+                    if (typeof updateCreditsBadge === 'function' && typeof data.credits_remaining === 'number') {
+                        updateCreditsBadge(data.credits_remaining);
+                    }
+                } else if (NON_REWARD_NOTES[data.reason]) {
+                    bonus.textContent = NON_REWARD_NOTES[data.reason];
+                    bonus.style.color = 'var(--text-muted)';
+                    bonus.hidden = false;
+                }
+            }
+            if (typeof track === 'function') {
+                track('contact_submit', { sample: !!(data && data.reason && data.reason !== 'no_file'), rewarded: !!(data && data.rewarded) });
+            }
+        };
+
+        var hasFile = fileInput && fileInput.files && fileInput.files.length > 0;
+
+        if (hasFile) {
+            // Multipart → Flask. FormData(form) carries name/email/project_type/
+            // details/sample by their name attributes.
+            fetch('/contact-sample', { method: 'POST', body: new FormData(form) })
+                .then(function (res) {
+                    return res.json().catch(function () { return {}; })
+                        .then(function (json) { res.ok ? done(json) : fail(); });
+                })
+                .catch(fail);
+            return;
+        }
+
+        // No sample → Supabase REST (publishable key: apikey header only for
+        // sb_publishable_ keys; legacy JWT keys also need Authorization: Bearer).
+        var payload = {
+            name: form.elements.name.value.trim(),
+            email: form.elements.email.value.trim(),
+            project_type: form.elements.project_type.value,
+            details: form.elements.details.value.trim(),
+        };
         var headers = {
             'Content-Type': 'application/json',
             'apikey': CONTACT_SUPABASE_KEY,
@@ -1353,19 +1426,12 @@ function updateCreditsBadge(n) {
         if (CONTACT_SUPABASE_KEY.indexOf('eyJ') === 0) {
             headers['Authorization'] = 'Bearer ' + CONTACT_SUPABASE_KEY;
         }
-
         fetch(CONTACT_SUPABASE_URL + '/rest/v1/' + CONTACT_TABLE, {
             method: 'POST',
             headers: headers,
             body: JSON.stringify(payload),
         }).then(function (res) {
-            if (res.ok) {
-                form.hidden = true;
-                if (success) success.hidden = false;
-                if (typeof track === 'function') track('contact_submit', {});
-            } else {
-                fail();
-            }
+            res.ok ? done(null) : fail();
         }).catch(fail);
     });
 })();
@@ -1842,6 +1908,119 @@ def bank_request():
         logger.error(f"Error writing bank_requests.txt: {str(e)}")
         return jsonify({'error': 'storage failure'}), 500
     return jsonify({'ok': True})
+
+
+# Contact form + optional sample statement. The text-only form posts straight
+# to Supabase from the browser; only submissions that ATTACH a sample come here,
+# because granting the bonus needs the signed credit cookie (Flask-only) and
+# provider detection. The sample PDF is emailed to us and never stored — same
+# "nothing stored" promise as the redaction tool itself.
+_CONTACT_NOTIFY_FN_URL = 'https://pnjsyklmibspekxgslos.supabase.co/functions/v1/redactly-contact-notify'
+_CONTACT_ANON_KEY = 'sb_publishable_K0QR3oL-s0n6PqsPIrJh2g_vCuBDTEE'  # publishable, public by design
+_SAMPLE_MAX_BYTES = 8 * 1024 * 1024           # 8 MB — statements are small
+_SAMPLE_MIN_TEXT_CHARS = 300                  # blocks blank / junk PDFs
+_SUPPORTED_PROVIDERS = {'amex_uk', 'barclaycard'}  # already have configs → no bonus
+
+
+def _notify_contact(record, attachment=None):
+    """POST the submission (with optional base64 attachment) to the contact
+    Edge Function, which emails it via Brevo. Returns True on success."""
+    payload = {'record': record}
+    if attachment:
+        payload['attachment'] = attachment
+    data = json.dumps(payload).encode('utf-8')
+    req = urllib.request.Request(
+        _CONTACT_NOTIFY_FN_URL, data=data, method='POST',
+        headers={'Content-Type': 'application/json', 'apikey': _CONTACT_ANON_KEY},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=30) as r:
+            return 200 <= r.status < 300
+    except Exception as e:
+        logger.error(f"contact notify failed: {e}")
+        return False
+
+
+@app.route('/contact-sample', methods=['POST'])
+def contact_sample():
+    """Contact submission that includes an optional sample statement.
+
+    Grants a one-time +5 bonus when the attached PDF is a readable statement we
+    do NOT already support. The PDF is emailed to us and never stored.
+    """
+    name    = (request.form.get('name') or '').strip()
+    email   = (request.form.get('email') or '').strip()
+    ptype   = (request.form.get('project_type') or '').strip()
+    details = (request.form.get('details') or '').strip()
+    if not name or not email or not details:
+        return jsonify({'error': 'Please fill in your name, email, and a message.'}), 400
+
+    attachment = None
+    reward = False
+    reason = 'no_file'
+    detected = None
+
+    file = request.files.get('sample')
+    if file and file.filename:
+        raw = file.read()
+        if len(raw) > _SAMPLE_MAX_BYTES:
+            return jsonify({'error': 'That file is larger than 8 MB. Please attach a single statement PDF.'}), 413
+
+        # Must be a readable PDF — extract text for detection + a junk filter.
+        text = ''
+        try:
+            import fitz
+            doc = fitz.open(stream=raw, filetype='pdf')
+            text = ''.join(page.get_text() for page in doc)
+            doc.close()
+        except Exception:
+            return jsonify({'error': "That doesn't look like a readable PDF. Please attach a statement PDF."}), 400
+
+        detected = detect_provider(text)
+        attachment = {
+            'name': secure_filename(file.filename) or 'sample.pdf',
+            'content': base64.b64encode(raw).decode('ascii'),
+        }
+
+        # Reward gating (detection first): a provider we already support earns no
+        # bonus (but is still worth reporting as such); otherwise it must be a
+        # readable statement, from a not-yet-rewarded visitor, with payments on.
+        if detected in _SUPPORTED_PROVIDERS:
+            reason = 'already_supported'
+        elif len(text.strip()) < _SAMPLE_MIN_TEXT_CHARS:
+            reason = 'unreadable'
+        elif not payments.payments_enabled():
+            reason = 'payments_off'
+        elif payments.sample_rewarded(request):
+            reason = 'already_claimed'
+        else:
+            reward = True
+            reason = 'granted'
+
+    # Give us context in the email without storing anything.
+    if attachment:
+        details = (f"{details}\n\n— — —\n[sample attached: {attachment['name']} · "
+                   f"detected: {detected or 'unknown'} · bonus granted: {reward}]")
+    record = {'name': name, 'email': email, 'project_type': ptype, 'details': details}
+
+    if not _notify_contact(record, attachment):
+        return jsonify({'error': "Something went wrong sending your message. Please email us at divyamrastogi2@gmail.com."}), 502
+
+    body = {'ok': True, 'rewarded': reward, 'reason': reason, 'bonus_credits': 0}
+    new_total = None
+    if reward:
+        current = payments.get_credits(request)
+        if current is None:
+            current = payments.FREE_CREDITS
+        new_total = current + payments.SAMPLE_BONUS_CREDITS
+        body['bonus_credits'] = payments.SAMPLE_BONUS_CREDITS
+        body['credits_remaining'] = new_total
+
+    resp = jsonify(body)
+    if reward:
+        payments.set_credits_cookie(resp, new_total)
+        payments.set_sample_rewarded_cookie(resp)
+    return resp
 
 
 @app.route('/stats', methods=['GET'])
