@@ -543,6 +543,9 @@ _SITE_OPEN = '''<!DOCTYPE html>
             background: var(--success-bg); border: 1px solid var(--success-border);
             border-radius: 12px; padding: 16px 18px; animation: bl-in .25s ease-out;
         }
+        /* The [hidden] attribute is display:none by default, but the display:flex
+           rule above overrides it — restore hiding until the form is submitted. */
+        .contact-success[hidden] { display: none; }
         .contact-success svg { width: 20px; height: 20px; color: var(--success); flex-shrink: 0; margin-top: 1px; }
         .contact-success h3 { font-size: 14px; font-weight: 600; color: var(--text); }
         .contact-success p { font-size: 12.5px; color: var(--text-muted); margin-top: 3px; }
