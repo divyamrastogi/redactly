@@ -30,6 +30,7 @@ import re
 import os
 import sys
 import logging
+from collections import Counter
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
@@ -321,6 +322,26 @@ def _is_continuation(cells):
 
 
 # ── Per-page redaction ──────────────────────────────────────────────────────
+def _redact_balance_amounts(page, rows, columns, header_y):
+    """Financial-summary redaction: remove amount-shaped spans that reveal the
+    account's balances rather than the kept transactions.
+
+    Two placements are covered on every transaction page:
+    - ABOVE the header: the summary block (opening/closing balance, totals —
+      Revolut prints these in the account-details area). Only amount-shaped
+      text is touched, so the name/sort-code furniture there is unaffected.
+    - BELOW the header, balance column: the running balance is redacted on
+      EVERY row — kept ones included. A kept row must prove its own amount
+      (paid in / paid out), never the account's running total.
+    """
+    for row in rows:
+        for s in row["spans"]:
+            if not _is_amount(s["text"]):
+                continue
+            if row["y0"] <= header_y or _assign_role(s, columns) == "balance":
+                page.add_redact_annot(_pad_rect(s["bbox"]), fill=(0, 0, 0))
+
+
 def _redact_dateless(page, rows, columns, header_y, keep_keywords, keep_credits, kept_rows):
     """Redact a dateless (Wise-style) transaction table.
 
@@ -365,12 +386,24 @@ def _redact_dateless(page, rows, columns, header_y, keep_keywords, keep_credits,
                     page.add_redact_annot(_pad_rect(c["bbox"]), fill=(0, 0, 0))
 
 
-def _redact_page(page, keep_keywords, kept_rows, keep_credits=False):
+def _redact_page(page, keep_keywords, kept_rows, keep_credits=False,
+                 redact_balances=False):
+    """Redact non-keyword transactions on one page.
+
+    Returns the detected transaction ``header_y`` (bottom of the header row),
+    or ``None`` when no credible header was found. The header_y is surfaced so
+    the optional Presidio PII pass can reuse it instead of calling
+    ``_detect_columns`` a second time per page.
+
+    ``redact_balances`` additionally removes financial-summary amounts (the
+    block above the header and the running-balance column) — see
+    :func:`_redact_balance_amounts`.
+    """
     spans = _collect_spans(page)
     columns, header_y = _detect_columns(spans, page.rect.width)
     if not columns:
         logger.warning(f"No column header line detected on page — leaving it untouched.")
-        return
+        return None
 
     date_column_known = any(c["role"] == "date" for c in columns)
     rows = _cluster_rows(spans)
@@ -381,8 +414,10 @@ def _redact_page(page, keep_keywords, kept_rows, keep_credits=False):
         # (date + transaction reference, wrapped description).
         _redact_dateless(page, rows, columns, header_y,
                          keep_keywords, keep_credits, kept_rows)
+        if redact_balances:
+            _redact_balance_amounts(page, rows, columns, header_y)
         page.apply_redactions()
-        return
+        return header_y
 
     # Dated layouts: a transaction GROUP starts at a row with a date cell and
     # absorbs the following dateless rows that sit close underneath (wrapped
@@ -420,22 +455,82 @@ def _redact_page(page, keep_keywords, kept_rows, keep_credits=False):
                 if c["role"] in ("date", "description", "paid_in", "paid_out"):
                     page.add_redact_annot(_pad_rect(c["bbox"]), fill=(0, 0, 0))
 
+    if redact_balances:
+        _redact_balance_amounts(page, rows, columns, header_y)
     page.apply_redactions()
+    return header_y
 
 
 # ── Public entry point ──────────────────────────────────────────────────────
-def redact_bank_generic(input_path, output_path, keep_keywords, keep_credits=False):
+def _apply_pii_pass(page, page_num, header_y, pii_mode,
+                    structured_only=False, landlord=False):
+    """Run the optional Presidio PII pass on a page after its transaction
+    redaction.
+
+    ``pii_layer`` is imported lazily so the default ``pii_mode="off"`` path
+    never pulls in presidio (and we avoid a circular import, since
+    ``pii_layer`` itself imports from this module). The summary log carries
+    counts by entity type only — never the matched text of any finding.
+
+    ``structured_only`` is set for headerless pages after the transaction pages
+    (info/terms pages: PERSON/PHONE hits there are the bank's own contact
+    details). ``landlord`` preserves account-ownership PII — name, account
+    number, sort code, IBAN — because a landlord statement must prove whose
+    account received the rent.
+    """
+    from pii_layer import (LANDLORD_PRESERVED_TYPES, analyze_page_pii,
+                           apply_pii_redactions)
+    findings = analyze_page_pii(
+        page, header_y=header_y, structured_only=structured_only,
+        exclude_types=LANDLORD_PRESERVED_TYPES if landlord else frozenset(),
+    )
+    counts = dict(Counter(f["entity_type"] for f in findings))
+    logger.info(f"PII {pii_mode} page {page_num + 1}: {counts or 'none'}")
+    if pii_mode == "enforce":
+        apply_pii_redactions(page, findings)
+    return findings
+
+
+def redact_bank_generic(input_path, output_path, keep_keywords, keep_credits=False,
+                        pii_mode="off", redact_balances=False):
     """Redact every transaction not matching ``keep_keywords`` from a generic UK
     bank statement. Returns (output_path, total_of_kept_amounts, kept_rows).
 
     When ``keep_credits`` is True (landlord mode), credit rows (money in) are
     always kept in addition to keyword matches — keywords may be empty.
+
+    ``pii_mode`` controls an optional Presidio PII pass run *after* the
+    transaction redaction, on each page, reusing the header_y already found by
+    ``_redact_page``: ``"off"`` (default, byte-identical to no PII layer),
+    ``"report"`` (log per-page counts by entity type) or ``"enforce"`` (also
+    redact the findings). Both non-off modes require presidio-analyzer.
+    In landlord mode (``keep_credits=True``) the PII pass preserves
+    account-ownership details (holder name, account number, sort code, IBAN) —
+    the statement must keep proving whose account received the rent. On
+    headerless pages after the transaction pages (bank info/terms pages) only
+    format-validated types are redacted, so the bank's own address and helpline
+    numbers stay readable.
+
+    ``redact_balances=True`` removes financial-summary amounts: the summary
+    block above the transaction header (opening/closing balances, totals) and
+    the running-balance column on every row, kept rows included — a kept row
+    proves its own amount, never the account's running total. Regex/positional
+    only; works without presidio and composes with any ``pii_mode``.
     """
     doc = fitz.open(input_path)
     kept_rows = []
+    seen_header = False
 
     for page_num in range(len(doc)):
-        _redact_page(doc[page_num], keep_keywords, kept_rows, keep_credits=keep_credits)
+        page = doc[page_num]
+        header_y = _redact_page(page, keep_keywords, kept_rows,
+                                keep_credits=keep_credits,
+                                redact_balances=redact_balances)
+        if pii_mode in ("report", "enforce"):
+            _apply_pii_pass(page, page_num, header_y, pii_mode,
+                            structured_only=(header_y is None and seen_header),
+                            landlord=keep_credits)
+        seen_header = seen_header or header_y is not None
 
     total = sum(r.get("amount", 0.0) for r in kept_rows)
     doc.save(output_path)
