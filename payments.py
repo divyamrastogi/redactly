@@ -32,6 +32,16 @@ from itsdangerous import URLSafeSerializer, BadSignature
 # --- configuration --------------------------------------------------------
 
 COOKIE_NAME = 'redact_credits'
+# Separate signed flag marking that this visitor already claimed the one-time
+# "share a sample statement" bonus. Kept apart from the credits cookie so the
+# normal credit flow (which overwrites COOKIE_NAME on every redaction/purchase)
+# never clobbers it. Cookie limits are soft (a user can clear cookies to re-earn)
+# — acceptable for a low-value bonus; escalate to server-side dedup only if
+# farming actually appears.
+SAMPLE_COOKIE_NAME = 'redact_sample'
+
+# Bonus redactions granted for sharing a usable sample statement.
+SAMPLE_BONUS_CREDITS = 5
 
 # Monetization is on only when explicitly enabled AND fully configured.
 _REQUIRED_STRIPE_VARS = (
@@ -63,6 +73,10 @@ def _secret_key():
 
 def _serializer():
     return URLSafeSerializer(_secret_key(), salt='credits')
+
+
+def _sample_serializer():
+    return URLSafeSerializer(_secret_key(), salt='sample')
 
 
 def _site_url():
@@ -104,6 +118,33 @@ def set_credits_cookie(response, credits):
         COOKIE_NAME, token,
         httponly=True,                                   # unreadable to JS
         secure=_site_url().startswith('https'),          # HTTPS-only in prod
+        samesite='Lax',
+        max_age=60 * 60 * 24 * 365,  # 1 year
+    )
+    return response
+
+
+def sample_rewarded(request):
+    """True when this visitor has already claimed the one-time sample bonus.
+
+    The flag is a signed cookie; a valid signature means we set it. A missing or
+    tampered cookie reads as not-yet-rewarded. Never raises."""
+    cookie = request.cookies.get(SAMPLE_COOKIE_NAME)
+    if not cookie:
+        return False
+    try:
+        return bool(_sample_serializer().loads(cookie))
+    except BadSignature:
+        return False
+
+
+def set_sample_rewarded_cookie(response):
+    """Stamp the signed 'sample bonus already claimed' flag on a response."""
+    token = _sample_serializer().dumps(True)
+    response.set_cookie(
+        SAMPLE_COOKIE_NAME, token,
+        httponly=True,
+        secure=_site_url().startswith('https'),
         samesite='Lax',
         max_age=60 * 60 * 24 * 365,  # 1 year
     )
