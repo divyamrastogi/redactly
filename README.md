@@ -2,6 +2,10 @@
 
 A Flask web application for redacting American Express and Barclaycard credit card statements. Users upload a PDF, select their credit card provider (or use auto-detection), and specify keywords - transactions matching those keywords are kept while all others are redacted.
 
+![Redacted statement output - only the whitelisted transactions remain](verify_output.png)
+
+Try it live at [pdf-redact.onrender.com](https://pdf-redact.onrender.com).
+
 ## Features
 
 ### 🏦 Supported Providers
@@ -105,7 +109,9 @@ Both providers support enhanced privacy redaction that removes personal and fina
 
 ## License
 
-This project is for educational and personal use. Please ensure you comply with your credit card provider's terms of service when processing statements.
+MIT — see [LICENSE](LICENSE).
+
+Please ensure you comply with your credit card provider's terms of service when processing statements.
 
 ## Contributing
 

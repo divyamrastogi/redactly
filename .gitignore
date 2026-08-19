@@ -10,5 +10,13 @@ bank_requests.txt
 consumed_sessions.txt
 payments_log.txt
 
+# Runtime usage counter
+usage_counter.txt
+
+# Local-only work
+invoice_work/
+local-analytics-work.patch
+.claude/worktrees/
+
 # Real statements for local e2e regression tests — NEVER commit these
 tests/e2e_statements/
