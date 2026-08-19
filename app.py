@@ -652,7 +652,7 @@ _HOMEPAGE_BODY = '''
                 <div class="hero-copy">
                     <span class="hero-badge">🔒 Private by design</span>
                     <h1>Share the line.<br>Not the ledger.</h1>
-                    <p class="hero-sub">Redactly permanently blacks out every transaction you don't want a landlord or employer to see — the text underneath is destroyed, not just covered. Your first statement is free.</p>
+                    <p class="hero-sub">Redactly permanently blacks out every transaction you don't want a landlord or employer to see — the text underneath is destroyed, not just covered. Free, no signup.</p>
                     <div class="hero-cta-row">
                         <a href="#tool" class="btn-primary">Redact my statement</a>
                         <span class="hero-note">Files deleted after download</span>
@@ -794,10 +794,10 @@ _HOMEPAGE_BODY = '''
                 <p class="pricing-sub">If it saved you time, you can <a href="https://ko-fi.com/javascriptbit" rel="noopener" target="_blank">buy me a Ko-fi</a> — entirely optional.</p>
             </section>
 
-            <!-- Custom request -->
+            <!-- Add more providers -->
             <div class="custom-section" id="custom-request">
-                <h2>Need a custom solution?</h2>
-                <p>Get in touch if you need a tailored redaction workflow for your business or use case.</p>
+                <h2>Add more providers</h2>
+                <p>Your bank or card isn't supported yet? Send a sample statement and we'll add it — or just tell us what's missing.</p>
 
                 <div class="contact-success" id="contact-success" hidden>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 11-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
@@ -819,12 +819,11 @@ _HOMEPAGE_BODY = '''
                         </div>
                     </div>
                     <div class="field">
-                        <label for="cf-type">What do you need?</label>
+                        <label for="cf-type">What's it about?</label>
                         <select id="cf-type" class="cf-select" name="project_type" required>
                             <option value="">Select…</option>
-                            <option>Bulk / business redaction</option>
                             <option>A bank or card we don't support yet</option>
-                            <option>API or integration</option>
+                            <option>A statement that redacts wrong</option>
                             <option>Something else</option>
                         </select>
                     </div>
@@ -833,9 +832,9 @@ _HOMEPAGE_BODY = '''
                         <textarea id="cf-details" class="cf-input cf-textarea" name="details" required rows="4" placeholder="Tell us a little about what you need."></textarea>
                     </div>
                     <div class="field cf-sample-field">
-                        <label for="cf-sample">Sample statement <span>· optional · earn 5 free redactions</span></label>
+                        <label for="cf-sample">Sample statement <span>· optional</span></label>
                         <input id="cf-sample" class="cf-file" name="sample" type="file" accept="application/pdf,.pdf">
-                        <span class="hint">From a bank we don't support yet? Attach a statement PDF and we'll add <strong>5 free redactions</strong> as a thank-you. Unlike the redaction tool, a sample you share here is emailed to us to help us build support for your bank — <strong>not stored on the site</strong>. Feel free to black out your account number first; we only need the transaction layout.</span>
+                        <span class="hint">From a bank we don't support yet? Attach a statement PDF so we can build support for it. Unlike the redaction tool, a sample you share here is emailed to us — <strong>not stored on the site</strong>. Feel free to black out your account number first; we only need the transaction layout.</span>
                     </div>
                     <button type="submit" class="btn-primary btn-block" id="cf-submit">Send message</button>
                     <p class="contact-error" id="contact-error" hidden>Something went wrong. Please try again, or email us at <a href="mailto:divyamrastogi2@gmail.com">divyamrastogi2@gmail.com</a>.</p>
@@ -1204,7 +1203,7 @@ function shakeField(id) {
     setTimeout(() => { el.style.outline = ''; }, 1200);
 }
 
-// --- "Need a custom solution?" contact form ---
+// --- "Add more providers" contact form ---
 // Two paths:
 //  • No sample attached → post straight to Supabase REST with the PUBLISHABLE
 //    key. Safe in the browser: the table's RLS allows insert only. A Postgres

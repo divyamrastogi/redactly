@@ -1,4 +1,4 @@
--- Redactly "Need a custom solution?" contact form submissions.
+-- Redactly "Add more providers" contact form submissions.
 --
 -- Lives in the SHARED smart-video-controls Supabase project, which also hosts an
 -- unrelated sbrdigital contact form on a table literally named

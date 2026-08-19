@@ -107,10 +107,14 @@ def test_homepage_is_free_with_no_paywall():
     assert "open source" in body
     # Voluntary support link — donations only, nothing gated behind it.
     assert "ko-fi.com/javascriptbit" in body
-    # No paid-product leftovers: no pricing, no paywall, no buy links.
+    # The provider-request form (was "Need a custom solution?").
+    assert "Add more providers" in body
+    # No paid-product leftovers: no pricing, no paywall, no buy links, and no
+    # "free redactions" phrasing that implies paying after some count.
     for absent in ("99p", "£7.99", "pack=pack10", "/buy", "no_credits",
                    "showPaywall", "updateCreditsBadge", "credits-badge",
-                   "documents left", "First one free"):
+                   "documents left", "First one free", "Need a custom solution",
+                   "5 free redactions", "earn 5", "bonus", "first statement"):
         assert absent not in body, f"unexpected {absent!r} on homepage"
     # Every element id the tool-card JS depends on is present.
     for el in ("pdf-input", "drop-zone", "keywords", "provider", "mode-group",

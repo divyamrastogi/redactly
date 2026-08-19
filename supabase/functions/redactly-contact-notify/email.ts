@@ -59,7 +59,7 @@ export function buildEmail(record: Record<string, string>) {
         </td></tr>
 
         <tr><td style="border-top:1px solid ${t.line};padding:20px 32px;background:${t.surface2};font:400 13px/1.5 ${t.font};color:${t.faint};">
-          Sent from the Redactly “Need a custom solution?” form. Replying goes straight to ${name}.
+          Sent from the Redactly “Add more providers” form. Replying goes straight to ${name}.
         </td></tr>
 
       </table>

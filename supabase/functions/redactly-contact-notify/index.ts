@@ -18,7 +18,7 @@ const NOTIFY_TO = (Deno.env.get("REDACTLY_NOTIFY_TO") ?? "")
   .filter(Boolean);
 const FROM = Deno.env.get("REDACTLY_NOTIFY_FROM") ?? "Redactly <onboarding@resend.dev>";
 
-// Optional PDF sample the user shares in exchange for bonus redactions.
+// Optional PDF sample the user shares so we can add support for their bank.
 // { name, content } where content is base64. Emailed as an attachment — never
 // stored (matches the site's "nothing stored" promise).
 type Attachment = { name: string; content: string };
