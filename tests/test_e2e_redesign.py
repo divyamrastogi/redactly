@@ -105,6 +105,8 @@ def test_homepage_is_free_with_no_paywall():
     assert "Redactly" in body
     assert "Free" in body
     assert "open source" in body
+    # Voluntary support link — donations only, nothing gated behind it.
+    assert "ko-fi.com/javascriptbit" in body
     # No paid-product leftovers: no pricing, no paywall, no buy links.
     for absent in ("99p", "£7.99", "pack=pack10", "/buy", "no_credits",
                    "showPaywall", "updateCreditsBadge", "credits-badge",

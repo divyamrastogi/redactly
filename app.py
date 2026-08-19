@@ -791,6 +791,7 @@ _HOMEPAGE_BODY = '''
                 <h2>Free. That's the whole price list.</h2>
                 <p class="pricing-sub">No credits, no subscription, no account.</p>
                 <p class="pricing-sub">The code is <a href="https://github.com/divyamrastogi/redactly" rel="noopener">open source</a> — use the hosted copy or run it yourself, free either way.</p>
+                <p class="pricing-sub">If it saved you time, you can <a href="https://ko-fi.com/javascriptbit" rel="noopener" target="_blank">buy me a Ko-fi</a> — entirely optional.</p>
             </section>
 
             <!-- Custom request -->
@@ -848,7 +849,7 @@ _SITE_MID = '''
 
     <footer class="site-footer">
         <div class="container">
-            © 2026 Redactly · True redaction, nothing stored · <a href="/guides">Guides</a>
+            © 2026 Redactly · True redaction, nothing stored · <a href="/guides">Guides</a> · <a href="https://ko-fi.com/javascriptbit" rel="noopener" target="_blank">Buy me a Ko-fi</a>
         </div>
     </footer>
 </div>

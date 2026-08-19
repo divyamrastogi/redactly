@@ -107,6 +107,10 @@ The application is configured to work specifically with:
 
 Both providers support enhanced privacy redaction that removes personal and financial details while preserving transaction filtering functionality.
 
+## Support
+
+Redactly is free and stays free — no account, no credits, no limits. If it saved you time, you can [buy me a Ko-fi](https://ko-fi.com/javascriptbit). Entirely optional.
+
 ## License
 
 MIT — see [LICENSE](LICENSE).
