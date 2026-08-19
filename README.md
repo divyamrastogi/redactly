@@ -4,7 +4,7 @@ A Flask web application for redacting American Express and Barclaycard credit ca
 
 ![Redacted statement output - only the whitelisted transactions remain](verify_output.png)
 
-Try it live at [pdf-redact.onrender.com](https://pdf-redact.onrender.com).
+Try it live at [redact.javascriptbit.com](https://redact.javascriptbit.com). Free — no account, no credits, no limits.
 
 ## Features
 

@@ -142,7 +142,7 @@ def test_structured_data_on_homepage_and_guides():
 def test_canonical_and_social_tags():
     client = app.test_client()
     home = client.get('/').get_data(as_text=True)
-    assert '<link rel="canonical" href="https://pdf-redact.onrender.com/">' in home or 'rel="canonical"' in home
+    assert '<link rel="canonical" href="https://redact.javascriptbit.com/">' in home or 'rel="canonical"' in home
     assert 'property="og:title"' in home and 'name="twitter:card"' in home
     assert 'rel="icon"' in home
     guide = client.get('/guides/redact-hsbc-statement').get_data(as_text=True)

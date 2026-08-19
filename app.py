@@ -1,4 +1,4 @@
-from flask import Flask, request, send_file, after_this_request, render_template_string, jsonify, abort, redirect, Response
+from flask import Flask, request, send_file, after_this_request, render_template_string, jsonify, abort, Response
 import os
 import re
 import json
@@ -14,7 +14,6 @@ from redact_financial_details import redact_barclaycard_with_privacy, redact_ame
 from redact_barclaycard import redact_barclaycard
 from redact_bank_generic import redact_bank_generic
 from provider_config import get_all_providers, detect_provider
-import payments
 
 app = Flask(__name__)
 
@@ -306,22 +305,15 @@ _SITE_OPEN = '''<!DOCTYPE html>
         }
         .tool-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
         .tool-title { font-size: 15px; font-weight: 600; }
-        /* Credit indicator (header chip + tool-card badge) */
-        .credits-ind {
+        /* Free-forever chip on the tool card */
+        .free-chip {
             display: inline-flex; align-items: center; gap: 6px;
             color: var(--success); background: var(--success-bg);
             border: 1px solid var(--success-border); border-radius: 20px;
-            font-weight: 600; white-space: nowrap; transition: color .15s, background .15s, border-color .15s;
+            font-weight: 600; white-space: nowrap;
+            font-size: 13.5px; padding: 7px 14px; box-shadow: var(--shadow);
         }
-        .credits-ind svg { width: 14px; height: 14px; flex-shrink: 0; }
-        .credits-ind .credits-text { line-height: 1; }
-        .credits-ind.low { color: var(--warning); background: var(--warning-bg); border-color: var(--warning-border); }
-        .header-credits { font-size: 12px; padding: 5px 12px; }
-        a.header-credits:hover { color: var(--success); filter: brightness(1.03); }
-        a.header-credits.low:hover { color: var(--warning); }
-        /* In the tool card the badge is the primary balance readout — larger + bolder. */
-        .card-credits { font-size: 13.5px; padding: 7px 14px; box-shadow: var(--shadow); }
-        .card-credits .credits-text { font-weight: 700; }
+        .free-chip svg { width: 14px; height: 14px; flex-shrink: 0; }
 
         /* ── Fields ── */
         .field { margin-top: 14px; }
@@ -494,25 +486,7 @@ _SITE_OPEN = '''<!DOCTYPE html>
         .pricing { padding: 48px 0; text-align: center; scroll-margin-top: 70px; }
         .pricing h2 { font-size: 22px; font-weight: 700; letter-spacing: -.02em; }
         .pricing-sub { font-size: 13px; color: var(--text-muted); margin-top: 6px; }
-        .price-row {
-            display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;
-            margin: 24px auto 0; max-width: 600px;
-        }
-        .price-card {
-            flex: 1; min-width: 220px; background: var(--bg-card); border: 1px solid var(--border);
-            border-radius: 14px; padding: 24px; box-shadow: var(--shadow); position: relative;
-        }
-        .price-card.featured { border: 2px solid var(--accent); box-shadow: var(--glow); }
-        .price-tag {
-            position: absolute; top: -11px; left: 50%; transform: translateX(-50%);
-            font-size: 10px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
-            color: #fff; background: var(--accent-grad); padding: 3px 11px; border-radius: 20px;
-        }
-        .price-kicker { font-size: 12px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase; color: var(--text-faint); }
-        .price-card.featured .price-kicker { color: var(--accent-strong); }
-        .price-amount { font-size: 34px; font-weight: 700; margin: 6px 0; }
-        .price-desc { font-size: 12.5px; color: var(--text-muted); }
-        .price-note { font-size: 11.5px; color: var(--text-faint); margin-top: 4px; }
+        .pricing-sub a { color: var(--accent-strong); }
 
         /* ── Custom request ── */
         .custom-section {
@@ -554,7 +528,6 @@ _SITE_OPEN = '''<!DOCTYPE html>
         .contact-success svg { width: 20px; height: 20px; color: var(--success); flex-shrink: 0; margin-top: 1px; }
         .contact-success h3 { font-size: 14px; font-weight: 600; color: var(--text); }
         .contact-success p { font-size: 12.5px; color: var(--text-muted); margin-top: 3px; }
-        .cf-bonus { font-weight: 600; color: var(--success) !important; margin-top: 8px !important; }
         /* Sample-statement file input */
         .cf-file {
             width: 100%; font-family: inherit; font-size: 13px; color: var(--text-muted);
@@ -569,18 +542,6 @@ _SITE_OPEN = '''<!DOCTYPE html>
         }
         .cf-sample-field .hint { line-height: 1.5; margin-top: 8px; }
         @media (max-width: 520px) { .contact-grid { grid-template-columns: 1fr; } }
-
-        /* ── Post-purchase toast ── */
-        .pay-toast {
-            position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-            display: flex; align-items: center; gap: 9px; z-index: 50;
-            background: var(--bg-card); border: 1px solid var(--success-border); color: var(--text);
-            box-shadow: var(--shadow-lg); border-radius: 12px; padding: 12px 16px; font-size: 13px;
-            animation: bl-in .25s ease-out;
-        }
-        .pay-toast svg { width: 17px; height: 17px; color: var(--success); }
-        .pay-toast.error { border-color: var(--error-border); }
-        .pay-toast.error svg { color: var(--error); }
 
         /* ── Footer ── */
         .site-footer {
@@ -651,12 +612,7 @@ _SITE_OPEN = '''<!DOCTYPE html>
                 <div class="header-right">
                     <a class="navlink" href="/#how">How it works</a>
                     <a class="navlink" href="/#pricing">Pricing</a>
-                    {% if payments_on %}
-                    <a href="/#tool" class="credits-ind header-credits{% if credits_low %} low{% endif %}" title="Redactions remaining">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
-                        <span class="credits-text">{{ credits_label }}</span>
-                    </a>
-                    {% elif usage_count %}<span class="usage-badge">{{ usage_count }} redacted</span>{% endif %}
+                    {% if usage_count %}<span class="usage-badge">{{ usage_count }} redacted</span>{% endif %}
                     <button class="theme-toggle" id="theme-toggle" title="Toggle theme" onclick="toggleTheme()">
                         <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                             <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/>
@@ -686,7 +642,7 @@ _HOMEPAGE_BODY = '''
               "name": "Redactly",
               "applicationCategory": "UtilityApplication",
               "operatingSystem": "Web",
-              "offers": {"@type": "Offer", "price": "0", "priceCurrency": "GBP", "description": "First document free, then 99p per document or £7.99 for ten."},
+              "offers": {"@type": "Offer", "price": "0", "priceCurrency": "GBP", "description": "Free and open source. No account needed."},
               "description": "Redact bank and credit card statement PDFs with true redaction: keep only chosen transactions visible for rental applications and expense claims. Supports AMEX, Barclaycard, HSBC, Revolut, Wise and other UK banks."
             }
             </script>
@@ -712,9 +668,9 @@ _HOMEPAGE_BODY = '''
                 <div class="tool-card" id="tool">
                     <div class="tool-head">
                         <span class="tool-title">Redact a statement</span>
-                        <span id="credits-badge" class="credits-ind card-credits{% if credits_low %} low{% endif %}" data-payments="{{ 'on' if payments_on else 'off' }}">
+                        <span id="free-badge" class="free-chip" title="No credits, no account — just free">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
-                            <span class="credits-text">{{ credits_label }}</span>
+                            <span>Free · no signup</span>
                         </span>
                     </div>
 
@@ -832,23 +788,9 @@ _HOMEPAGE_BODY = '''
 
             <!-- Pricing -->
             <section class="pricing" id="pricing">
-                <h2>Pay only for what you redact</h2>
-                <p class="pricing-sub">First document free. No subscription.</p>
-                <div class="price-row">
-                    <div class="price-card">
-                        <div class="price-kicker">Single</div>
-                        <div class="price-amount">99p</div>
-                        <div class="price-desc">One redacted document</div>
-                        <div class="price-note">≈ 99¢ · €0.99</div>
-                    </div>
-                    <div class="price-card featured">
-                        <div class="price-tag">Best value</div>
-                        <div class="price-kicker">Pack of 10</div>
-                        <div class="price-amount">£7.99</div>
-                        <div class="price-desc">Ten documents · 80p each</div>
-                        <div class="price-note">Credits never expire</div>
-                    </div>
-                </div>
+                <h2>Free. That's the whole price list.</h2>
+                <p class="pricing-sub">No credits, no subscription, no account.</p>
+                <p class="pricing-sub">The code is <a href="https://github.com/divyamrastogi/redactly" rel="noopener">open source</a> — use the hosted copy or run it yourself, free either way.</p>
             </section>
 
             <!-- Custom request -->
@@ -861,7 +803,6 @@ _HOMEPAGE_BODY = '''
                     <div>
                         <h3>Thanks — we've got it.</h3>
                         <p>We'll get back to you at the email you provided.</p>
-                        <p class="cf-bonus" id="cf-bonus" hidden></p>
                     </div>
                 </div>
 
@@ -978,36 +919,8 @@ function categorizeError(message) {
         return 'no_file';
     if (m.includes('landlord mode'))
         return 'landlord_on_card';
-    if (m.includes('no_credits'))
-        return 'no_credits';
     return 'server_error';
 }
-
-// --- Post-purchase toast (redirect target /?pay=success|already|unpaid|error) ---
-(function () {
-    const pay = new URLSearchParams(location.search).get('pay');
-    if (!pay) return;
-    const msg = {
-        success: 'Payment received — your credits have been added.',
-        already: 'This payment was already used.',
-        unpaid:  'Payment is not yet complete.',
-        error:   'We could not verify your payment. Please try again.'
-    }[pay];
-    if (!msg) return;
-    const isError = pay !== 'success';
-    const toast = document.createElement('div');
-    toast.className = 'pay-toast' + (isError ? ' error' : '');
-    toast.innerHTML = `
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            ${isError
-                ? '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>'
-                : '<polyline points="20 6 9 17 4 12"/>'}
-        </svg>
-        <span>${msg}</span>`;
-    document.body.appendChild(toast);
-    history.replaceState(null, '', '/');   // drop ?pay= so a refresh won't re-toast
-    setTimeout(() => toast.remove(), 6000);
-})();
 
 // --- Provider UI ---
 function getSelectedMode() {
@@ -1139,14 +1052,7 @@ async function processFiles() {
             const res  = await fetch('/redact', { method: 'POST', body: fd });
             const data = await res.json();
 
-            // No credits left (payments enabled) — show a paywall card and stop,
-            // since the remaining files would 402 too.
-            if (data.error === 'no_credits') {
-                track('paywall_shown');
-                updateCreditsBadge(0);
-                showPaywall(card, file.name);
-                break;
-            } else if (data.error) {
+            if (data.error) {
                 track('redact_error', { error_type: categorizeError(data.error) });
                 updateCard(card, 'error', file.name, null, data.error);
             } else {
@@ -1162,7 +1068,6 @@ async function processFiles() {
                     ? `${data.kept_count} transaction${data.kept_count !== 1 ? 's' : ''} · £${data.total.toFixed(2)}`
                     : `£${data.total.toFixed(2)} total`;
                 updateCard(card, 'success', data.filename, data.download_url, detail);
-                if (data.credits_remaining !== undefined) updateCreditsBadge(data.credits_remaining);
                 if (data.provider_detected === false) showBankRequestBanner();
                 if (data.beta) showBetaBanner();
             }
@@ -1236,26 +1141,6 @@ function showBetaBanner() {
     section.appendChild(banner);
 }
 
-function showPaywall(card, filename) {
-    // Shown when /redact returns 402 no_credits (payments enabled).
-    card.className = 'result-card';
-    card.innerHTML = `
-        <div class="result-icon" style="background:rgba(245,158,11,0.12)">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/>
-            </svg>
-        </div>
-        <div class="result-info">
-            <p class="result-name">${filename}</p>
-            <p class="result-detail">You've used your free document.</p>
-            <p class="result-detail" style="margin-top:6px">99p for one document · £7.99 for ten. No account needed.</p>
-        </div>
-        <div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0">
-            <a href="/buy?pack=single" class="btn-download" style="background:var(--accent);color:#fff;border-color:var(--accent);justify-content:center;padding:8px 14px">Buy 99p</a>
-            <a href="/buy?pack=pack10" style="font-size:12px;color:var(--text-muted);text-decoration:underline;text-align:center">10 for £7.99</a>
-        </div>`;
-}
-
 function addPendingCard(filename) {
     const card = document.createElement('div');
     card.className = 'result-card';
@@ -1318,27 +1203,14 @@ function shakeField(id) {
     setTimeout(() => { el.style.outline = ''; }, 1200);
 }
 
-// Live remaining-balance indicator on the tool card. No-ops when payments are
-// off (the badge just reads "First one free"). Never shows a negative count.
-function updateCreditsBadge(n) {
-    const host = document.getElementById('credits-badge');
-    if (!host || host.dataset.payments !== 'on') return;
-    const left = Math.max(n | 0, 0);
-    const label = left + ' document' + (left === 1 ? '' : 's') + ' left';
-    // Keep every indicator (header chip + tool-card badge) in sync.
-    document.querySelectorAll('.credits-text').forEach(el => { el.textContent = label; });
-    document.querySelectorAll('.credits-ind').forEach(el => { el.classList.toggle('low', left <= 0); });
-}
-
 // --- "Need a custom solution?" contact form ---
 // Two paths:
 //  • No sample attached → post straight to Supabase REST with the PUBLISHABLE
 //    key. Safe in the browser: the table's RLS allows insert only. A Postgres
 //    trigger emails us via Brevo. No content hits the Flask app.
 //  • Sample PDF attached → post multipart to /contact-sample. Flask detects the
-//    provider, grants a one-time +5 bonus for an unsupported statement, and
-//    emails the PDF to us (never stored). Credits need Flask's signed cookie,
-//    hence the separate path.
+//    provider (so the email says which bank it is) and emails the PDF to us
+//    (never stored).
 (function () {
     var CONTACT_SUPABASE_URL = 'https://pnjsyklmibspekxgslos.supabase.co';
     var CONTACT_SUPABASE_KEY = 'sb_publishable_K0QR3oL-s0n6PqsPIrJh2g_vCuBDTEE';
@@ -1348,14 +1220,8 @@ function updateCreditsBadge(n) {
     if (!form) return;
     var success = document.getElementById('contact-success');
     var errorMsg = document.getElementById('contact-error');
-    var bonus = document.getElementById('cf-bonus');
     var fileInput = document.getElementById('cf-sample');
     var button = document.getElementById('cf-submit');
-
-    var NON_REWARD_NOTES = {
-        already_supported: "We already support that provider, so no bonus this time — but thank you!",
-        already_claimed: "You've already claimed the sample bonus — thanks again!",
-    };
 
     form.addEventListener('submit', function (e) {
         e.preventDefault();
@@ -1372,27 +1238,12 @@ function updateCreditsBadge(n) {
             button.textContent = original;
         };
 
-        // data === null for the Supabase path (no reward info); an object for the
-        // /contact-sample path.
+        // data === null for the Supabase path; an object for /contact-sample.
         var done = function (data) {
             form.hidden = true;
             if (success) success.hidden = false;
-            if (data && bonus) {
-                if (data.rewarded) {
-                    bonus.textContent = '🎉 ' + (data.bonus_credits || 5) + ' free redactions added — enjoy!';
-                    bonus.style.color = '';
-                    bonus.hidden = false;
-                    if (typeof updateCreditsBadge === 'function' && typeof data.credits_remaining === 'number') {
-                        updateCreditsBadge(data.credits_remaining);
-                    }
-                } else if (NON_REWARD_NOTES[data.reason]) {
-                    bonus.textContent = NON_REWARD_NOTES[data.reason];
-                    bonus.style.color = 'var(--text-muted)';
-                    bonus.hidden = false;
-                }
-            }
             if (typeof track === 'function') {
-                track('contact_submit', { sample: !!(data && data.reason && data.reason !== 'no_file'), rewarded: !!(data && data.rewarded) });
+                track('contact_submit', { sample: !!(data && data.reason && data.reason !== 'no_file') });
             }
         };
 
@@ -1579,31 +1430,12 @@ def process_single_file(file, keywords, provider, enhanced_privacy, mode='custom
 def index():
     usage_count = update_usage_counter()
     providers   = get_all_providers()
-    # Per-visitor credit indicator. Only meaningful when payments are on; when
-    # off the tool is free/unlimited and we keep the plain "First one free" badge.
-    payments_on = payments.payments_enabled()
-    raw_credits = payments.get_credits(request) if payments_on else None
-    credits_fresh = raw_credits is None  # brand-new visitor, no cookie yet
-    credits_remaining = (payments.FREE_CREDITS if raw_credits is None
-                         else raw_credits) if payments_on else None
-    # Human label for the credit indicator, rendered into the header + tool card.
-    if not payments_on or credits_fresh:
-        credits_label = 'First one free'
-    else:
-        credits_label = '%d document%s left' % (
-            credits_remaining, '' if credits_remaining == 1 else 's')
-    credits_low = bool(payments_on and not credits_fresh and credits_remaining == 0)
     return render_template_string(HTML_TEMPLATE,
         title='Redactly — Share Bank & Card Statements Without Oversharing',
         meta_description='Blackout every transaction on your AMEX or Barclaycard statement except the ones you choose. For rental applications and expense claims. True redaction — text is destroyed, not hidden. Files deleted after download.',
         canonical=_base_url() + '/',
         usage_count=usage_count,
-        providers=providers,
-        payments_on=payments_on,
-        credits_fresh=credits_fresh,
-        credits_remaining=credits_remaining,
-        credits_label=credits_label,
-        credits_low=credits_low)
+        providers=providers)
 
 
 @app.route('/guides/<slug>')
@@ -1658,7 +1490,7 @@ def guides_index():
 
 def _base_url():
     """Canonical site root for absolute URLs (sitemap/robots). Env-configurable."""
-    return os.environ.get('BASE_URL', 'https://pdf-redact.onrender.com').rstrip('/')
+    return os.environ.get('BASE_URL', 'https://redact.javascriptbit.com').rstrip('/')
 
 
 @app.route('/sitemap.xml')
@@ -1710,8 +1542,8 @@ def llms_txt():
 > names, statement periods, and balances stay intact.
 
 Key facts:
-- Pricing: the first document is free; then 99p per document, or £7.99 for a
-  pack of ten. No subscription and no account.
+- Pricing: free, and open source under the MIT licence. No subscription, no
+  account, no credits.
 - Supported statements: American Express, Barclaycard, HSBC, Revolut, Wise,
   plus a generic parser for other UK bank layouts (beta).
 - Landlord mode keeps income, balances, and whitelisted rows (e.g. rent) and
@@ -1754,26 +1586,13 @@ def redact_endpoint():
     if not is_landlord and not keywords:
         return jsonify({'error': 'No keywords provided'}), 400
 
-    # --- Payments (Phase 4): gate on credits BEFORE doing any work. ----------
-    # When payments are OFF this whole block is skipped — no cookie read, no
-    # decrement — so the free, unlimited behaviour is unchanged.
-    enabled = payments.payments_enabled()
-    credits = None
-    if enabled:
-        credits = payments.get_credits(request)
-        if credits is None:
-            # First document free: a brand-new visitor starts with one credit.
-            credits = payments.FREE_CREDITS
-        if credits <= 0:
-            return jsonify({'error': 'no_credits', 'buy_url': '/buy'}), 402
-
     try:
         redacted_path, total, kept_count, provider_detected, detected_provider, beta = process_single_file(
             file, keywords, provider, enhanced,
             mode=mode, keep_credits=is_landlord
         )
         display_name = os.path.basename(redacted_path)
-        payload = {
+        return jsonify({
             'filename':         display_name,
             'download_url':     f'/download/{redacted_path}',
             'total':            total,
@@ -1781,16 +1600,7 @@ def redact_endpoint():
             'provider_detected': provider_detected,
             'provider':         detected_provider,
             'beta':             bool(beta),
-        }
-        # Spend one credit only after a successful redaction (never on failure),
-        # and tell the client the new balance so it can update the counter.
-        if enabled:
-            remaining = max(credits - 1, 0)
-            payload['credits_remaining'] = remaining
-        resp = jsonify(payload)
-        if enabled:
-            payments.set_credits_cookie(resp, remaining)
-        return resp
+        })
     except LandlordCardError as e:
         # Friendly 400: landlord mode doesn't apply to credit-card statements.
         return jsonify({'error': str(e)}), 400
@@ -1810,101 +1620,6 @@ def download_file(filename):
         return response
 
     return send_file(filename, as_attachment=True)
-
-
-# ─────────────────────────────────────────────────────────────────────────────
-# Payments (Phase 4, Task 4.1). Every route below 404s unless payments are
-# enabled, so the disabled (today's production) state exposes none of them.
-# ─────────────────────────────────────────────────────────────────────────────
-
-@app.route('/buy', methods=['GET'])
-def buy():
-    """Create a Stripe Checkout Session for ?pack=single|pack10 and redirect to it."""
-    if not payments.payments_enabled():
-        abort(404)
-    pack = request.args.get('pack', 'single')
-    if pack not in payments.PACK_CREDITS:
-        return jsonify({'error': 'unknown pack'}), 400
-    try:
-        session = payments.create_checkout_session(pack)
-    except Exception as e:
-        logger.error(f"Stripe create session error: {e}", exc_info=True)
-        return jsonify({'error': 'checkout failed'}), 502
-    return redirect(session.url)
-
-
-@app.route('/paid', methods=['GET'])
-def paid():
-    """Stripe success redirect: verify paid + not-yet-consumed, then grant credits.
-
-    Query: ``session_id``. Credit granting happens here; the webhook is only the
-    audit trail. Idempotent — a session grants credits at most once.
-    """
-    if not payments.payments_enabled():
-        abort(404)
-    session_id = request.args.get('session_id')
-    if not session_id:
-        abort(400)
-    try:
-        session = payments.retrieve_session(session_id)
-    except Exception as e:
-        logger.error(f"Stripe retrieve session error: {e}", exc_info=True)
-        return redirect('/?pay=error')
-
-    payment_status = (session.get('payment_status')
-                      if isinstance(session, dict)
-                      else getattr(session, 'payment_status', None))
-    if payment_status != 'paid':
-        return redirect('/?pay=unpaid')
-
-    # claim_session atomically checks-and-marks; False means already granted.
-    if not payments.claim_session(session_id):
-        return redirect('/?pay=already')
-
-    grant = payments.credits_for_session(session)
-    current = payments.get_credits(request)
-    if current is None:
-        current = 0
-    resp = redirect('/?pay=success')
-    payments.set_credits_cookie(resp, current + grant)
-    return resp
-
-
-@app.route('/stripe-webhook', methods=['POST'])
-def stripe_webhook():
-    """Stripe webhook: verify signature, log completed sessions (audit only).
-
-    Cookie granting happens on ``/paid``; this endpoint only records that a
-    checkout completed — session id + amount, never statement content.
-    """
-    if not payments.payments_enabled():
-        abort(404)
-    signature = request.headers.get('Stripe-Signature', '')
-    try:
-        event = payments.verify_webhook(request.get_data(), signature)
-    except Exception as e:
-        logger.warning(f"Stripe webhook signature verification failed: {e}")
-        return jsonify({'error': 'invalid signature'}), 400
-
-    # event may be a plain dict (tests) or a stripe StripeObject (production);
-    # both support the field names used below.
-    event_type = event.get('type') if isinstance(event, dict) else getattr(event, 'type', None)
-    if event_type != 'checkout.session.completed':
-        return jsonify({'received': True})
-
-    data = event.get('data') if isinstance(event, dict) else getattr(event, 'data', None)
-    obj = (data.get('object') if isinstance(data, dict)
-           else getattr(data, 'object', None)) or {}
-    sid = obj.get('id', '') if isinstance(obj, dict) else getattr(obj, 'id', '')
-    amount = (obj.get('amount_total') if isinstance(obj, dict)
-              else getattr(obj, 'amount_total', None))
-    try:
-        with open('payments_log.txt', 'a') as f:
-            amt = '' if amount is None else f',{amount}'
-            f.write(f"{_iso_now()},{sid}{amt}\n")
-    except Exception as e:
-        logger.error(f"Error writing payments_log.txt: {e}")
-    return jsonify({'received': True})
 
 
 @app.route('/bank-request', methods=['POST'])
@@ -1930,14 +1645,14 @@ def bank_request():
 
 # Contact form + optional sample statement. The text-only form posts straight
 # to Supabase from the browser; only submissions that ATTACH a sample come here,
-# because granting the bonus needs the signed credit cookie (Flask-only) and
-# provider detection. The sample PDF is emailed to us and never stored — same
-# "nothing stored" promise as the redaction tool itself.
+# because provider detection runs server-side (so we can tell which bank the
+# statement is from in the email we receive). The sample PDF is emailed to us
+# and never stored — same "nothing stored" promise as the redaction tool itself.
 _CONTACT_NOTIFY_FN_URL = 'https://pnjsyklmibspekxgslos.supabase.co/functions/v1/redactly-contact-notify'
 _CONTACT_ANON_KEY = 'sb_publishable_K0QR3oL-s0n6PqsPIrJh2g_vCuBDTEE'  # publishable, public by design
 _SAMPLE_MAX_BYTES = 8 * 1024 * 1024           # 8 MB — statements are small
 _SAMPLE_MIN_TEXT_CHARS = 300                  # blocks blank / junk PDFs
-_SUPPORTED_PROVIDERS = {'amex_uk', 'barclaycard'}  # already have configs → no bonus
+_SUPPORTED_PROVIDERS = {'amex_uk', 'barclaycard'}  # already have full configs
 
 
 def _notify_contact(record, attachment=None):
@@ -1963,8 +1678,8 @@ def _notify_contact(record, attachment=None):
 def contact_sample():
     """Contact submission that includes an optional sample statement.
 
-    Grants a one-time +5 bonus when the attached PDF is a readable statement we
-    do NOT already support. The PDF is emailed to us and never stored.
+    Runs provider detection on the attached PDF so the email we receive says
+    which bank it is from. The PDF is emailed to us and never stored.
     """
     name    = (request.form.get('name') or '').strip()
     email   = (request.form.get('email') or '').strip()
@@ -1974,7 +1689,6 @@ def contact_sample():
         return jsonify({'error': 'Please fill in your name, email, and a message.'}), 400
 
     attachment = None
-    reward = False
     reason = 'no_file'
     detected = None
 
@@ -2000,45 +1714,25 @@ def contact_sample():
             'content': base64.b64encode(raw).decode('ascii'),
         }
 
-        # Reward gating (detection first): a provider we already support earns no
-        # bonus (but is still worth reporting as such); otherwise it must be a
-        # readable statement, from a not-yet-rewarded visitor, with payments on.
+        # Reason is reported to the client only so the UI can say something
+        # useful; no rewards, no accounts, nothing to claim.
         if detected in _SUPPORTED_PROVIDERS:
             reason = 'already_supported'
         elif len(text.strip()) < _SAMPLE_MIN_TEXT_CHARS:
             reason = 'unreadable'
-        elif not payments.payments_enabled():
-            reason = 'payments_off'
-        elif payments.sample_rewarded(request):
-            reason = 'already_claimed'
         else:
-            reward = True
-            reason = 'granted'
+            reason = 'statement'
 
     # Give us context in the email without storing anything.
     if attachment:
         details = (f"{details}\n\n— — —\n[sample attached: {attachment['name']} · "
-                   f"detected: {detected or 'unknown'} · bonus granted: {reward}]")
+                   f"detected: {detected or 'unknown'}]")
     record = {'name': name, 'email': email, 'project_type': ptype, 'details': details}
 
     if not _notify_contact(record, attachment):
         return jsonify({'error': "Something went wrong sending your message. Please email us at divyamrastogi2@gmail.com."}), 502
 
-    body = {'ok': True, 'rewarded': reward, 'reason': reason, 'bonus_credits': 0}
-    new_total = None
-    if reward:
-        current = payments.get_credits(request)
-        if current is None:
-            current = payments.FREE_CREDITS
-        new_total = current + payments.SAMPLE_BONUS_CREDITS
-        body['bonus_credits'] = payments.SAMPLE_BONUS_CREDITS
-        body['credits_remaining'] = new_total
-
-    resp = jsonify(body)
-    if reward:
-        payments.set_credits_cookie(resp, new_total)
-        payments.set_sample_rewarded_cookie(resp)
-    return resp
+    return jsonify({'ok': True, 'reason': reason})
 
 
 @app.route('/stats', methods=['GET'])

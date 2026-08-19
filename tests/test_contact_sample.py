@@ -1,13 +1,11 @@
-"""Tests for the /contact-sample endpoint — the "share a sample statement, earn
-5 redactions" flow.
+"""Tests for the /contact-sample endpoint — the "share a sample statement"
+flow.
 
 No network: ``app._notify_contact`` (which POSTs to the Brevo Edge Function) is
-monkeypatched, so no email is ever sent. Payments are turned ON with fake Stripe
-env because the bonus only grants when payments are enabled. The rules under
-test: a readable statement from an UNSUPPORTED provider grants +5 exactly once
-per visitor; a supported provider (AMEX/Barclaycard) or an unreadable/blank PDF
-grants nothing; and the sample PDF is always forwarded as an email attachment,
-never stored.
+monkeypatched, so no email is ever sent. The rules under test: a readable
+sample is always forwarded as an email attachment (never stored) with the
+detected provider noted; junk PDFs and non-PDFs are rejected; required fields
+are enforced.
 """
 import io
 import os
@@ -16,20 +14,10 @@ import sys
 import pytest
 
 # Make the repo root importable when pytest is invoked from anywhere.
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.path.pardir)))
 
-import payments
 import app as app_module
 from app import app
-
-
-def _enable_payments(monkeypatch):
-    monkeypatch.setenv('PAYMENTS_ENABLED', '1')
-    monkeypatch.setenv('STRIPE_SECRET_KEY', 'sk_test_fake')
-    monkeypatch.setenv('STRIPE_WEBHOOK_SECRET', 'whsec_fake')
-    monkeypatch.setenv('STRIPE_PRICE_SINGLE', 'price_single_fake')
-    monkeypatch.setenv('STRIPE_PRICE_PACK10', 'price_pack10_fake')
-    monkeypatch.setenv('SECRET_KEY', 'test-secret-key-secure')
 
 
 def _make_pdf(lines):
@@ -105,68 +93,52 @@ def _post(client, pdf_bytes=None, name="Jane", email="jane@example.com",
                        content_type="multipart/form-data")
 
 
-def test_generic_statement_grants_bonus_once(monkeypatch, _no_email):
-    _enable_payments(monkeypatch)
+def test_generic_statement_is_emailed_with_detection(_no_email):
     client = app.test_client()
 
     r = _post(client, _generic())
     j = r.get_json()
     assert r.status_code == 200
-    assert j['rewarded'] is True
-    assert j['reason'] == 'granted'
-    assert j['bonus_credits'] == payments.SAMPLE_BONUS_CREDITS
-    # New visitor: 1 free + 5 bonus.
-    assert j['credits_remaining'] == payments.FREE_CREDITS + payments.SAMPLE_BONUS_CREDITS
+    assert j['ok'] is True
+    assert j['reason'] == 'statement'
     # The sample was forwarded as an attachment, never stored.
     assert _no_email['attachment'] and _no_email['attachment']['content']
     assert 'detected: generic_bank_uk' in _no_email['record']['details']
 
-    # Same visitor (cookie carried by the client) cannot claim again.
-    r2 = _post(client, _generic())
-    j2 = r2.get_json()
-    assert j2['rewarded'] is False
-    assert j2['reason'] == 'already_claimed'
 
-
-def test_supported_provider_gets_no_bonus(monkeypatch, _no_email):
-    _enable_payments(monkeypatch)
+def test_supported_provider_flagged_but_still_emailed(_no_email):
     client = app.test_client()
     r = _post(client, _amex())
     j = r.get_json()
-    assert j['rewarded'] is False
     assert j['reason'] == 'already_supported'
     # Still emailed — a supported-provider layout variant may still be useful.
     assert _no_email['attachment'] is not None
 
 
-def test_blank_pdf_is_not_rewarded(monkeypatch, _no_email):
-    _enable_payments(monkeypatch)
+def test_blank_pdf_is_flagged_unreadable(_no_email):
     client = app.test_client()
     r = _post(client, _make_pdf(["hi"]))
     j = r.get_json()
-    assert j['rewarded'] is False
+    assert r.status_code == 200
     assert j['reason'] == 'unreadable'
 
 
-def test_non_pdf_is_rejected(monkeypatch, _no_email):
-    _enable_payments(monkeypatch)
+def test_non_pdf_is_rejected(_no_email):
     client = app.test_client()
     r = _post(client, b"this is definitely not a pdf")
     assert r.status_code == 400
 
 
-def test_missing_fields_rejected(monkeypatch, _no_email):
-    _enable_payments(monkeypatch)
+def test_missing_fields_rejected(_no_email):
     client = app.test_client()
     r = _post(client, _generic(), name="")
     assert r.status_code == 400
 
 
-def test_text_only_submission_is_emailed_without_bonus(monkeypatch, _no_email):
-    _enable_payments(monkeypatch)
+def test_text_only_submission_is_emailed(_no_email):
     client = app.test_client()
     r = _post(client, None)  # no file
     j = r.get_json()
     assert j['ok'] is True
     assert j['reason'] == 'no_file'
-    assert j['rewarded'] is False
+    assert _no_email['record'] is not None
