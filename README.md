@@ -107,6 +107,12 @@ The application is configured to work specifically with:
 
 Both providers support enhanced privacy redaction that removes personal and financial details while preserving transaction filtering functionality.
 
+## Analytics
+
+Page views and a privacy-safe usage funnel (file selected → redact → success → download) are reported to Google Analytics and, optionally, [Umami](https://umami.is) — cookieless, no consent banner needed. Only provider slugs, counts, and banded totals are ever sent; never statement content, keywords, filenames, or exact amounts.
+
+Set `UMAMI_WEBSITE_ID` to enable the Umami tag. Leave it unset (the default) and forks/local runs send nothing to Umami.
+
 ## Support
 
 Redactly is free and stays free — no account, no credits, no limits. If it saved you time, you can [buy me a Ko-fi](https://ko-fi.com/javascriptbit). Entirely optional.

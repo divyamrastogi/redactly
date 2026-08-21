@@ -45,6 +45,15 @@ def update_usage_counter():
 _DEPLOY_DATE = datetime.now(timezone.utc).strftime('%Y-%m-%d')
 
 
+@app.context_processor
+def _analytics_context():
+    """Expose the Umami website id (if configured) to every template.
+
+    Unset → no Umami tag is rendered, so forks and local runs stay untracked.
+    """
+    return {'umami_website_id': os.environ.get('UMAMI_WEBSITE_ID', '')}
+
+
 @app.after_request
 def _security_headers(response):
     response.headers.setdefault('Strict-Transport-Security',
@@ -117,6 +126,7 @@ _SITE_OPEN = '''<!DOCTYPE html>
     gtag('js', new Date());
     gtag('config', 'G-SY9PXXMVD8');
     </script>
+    {% if umami_website_id %}<script defer src="https://cloud.umami.is/script.js" data-website-id="{{ umami_website_id }}"></script>{% endif %}
     <style>
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -883,21 +893,11 @@ function toggleTheme() {
 _HOMEPAGE_SCRIPT = '''
 <script>
 // --- Privacy-safe analytics wrappers (chokepoint + total banding) ---
-// track() funnels every analytics event through a single function and no-ops if
-// gtag is blocked (ad blocker) or never loaded, so a missing tracker never
-// throws. bandTotal() collapses an exact £ amount into a coarse band BEFORE it
-// reaches Google Analytics.
+// track() is defined in the shared site script (_SITE_SCRIPT) so guide pages
+// can report too. bandTotal() collapses an exact £ amount into a coarse band
+// BEFORE it reaches any tracker.
 // Hard privacy rule: never pass statement content, keywords, filenames, or
 // exact monetary values to either helper — provider slugs, counts, and bands only.
-function track(event, params) {
-    if (typeof gtag !== 'function') return;
-    try {
-        gtag('event', event, params || {});
-    } catch (e) {
-        /* gtag unavailable — analytics is best-effort, never fatal */
-    }
-}
-
 function bandTotal(pounds) {
     if (typeof pounds !== 'number' || isNaN(pounds) || pounds < 0) return 'unknown';
     if (pounds <= 10)   return '0-10';
@@ -973,7 +973,11 @@ const pdfInput = document.getElementById('pdf-input');
 const dropZone = document.getElementById('drop-zone');
 const fileList = document.getElementById('file-list');
 
-pdfInput.addEventListener('change', renderFileList);
+pdfInput.addEventListener('change', () => {
+    renderFileList();
+    // Count only — never the filename.
+    if (pdfInput.files.length) track('file_selected', { file_count: pdfInput.files.length, via: 'picker' });
+});
 
 dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
 dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
@@ -985,6 +989,7 @@ dropZone.addEventListener('drop', e => {
     [...e.dataTransfer.files].filter(f => f.type === 'application/pdf').forEach(f => dt.items.add(f));
     pdfInput.files = dt.files;
     renderFileList();
+    if (pdfInput.files.length) track('file_selected', { file_count: pdfInput.files.length, via: 'drop' });
 });
 
 function renderFileList() {
@@ -1025,6 +1030,8 @@ async function processFiles() {
     // Keywords are required unless landlord mode is selected (income/balances
     // are kept automatically; keywords are optional there).
     if (mode !== 'landlord' && !keywords) { shakeField('keywords'); return; }
+
+    track('redact_clicked', { mode: mode, provider: provider, file_count: files.length, privacy: privacy });
 
     const btn     = document.getElementById('submit-btn');
     const btnText = document.getElementById('btn-text');
@@ -1174,7 +1181,7 @@ function updateCard(card, status, filename, url, detail) {
                 <p class="result-name">${filename}</p>
                 <p class="result-detail">${detail}</p>
             </div>
-            <a href="${url}" download class="btn-download">
+            <a href="${url}" download class="btn-download" onclick="track('download_clicked', { provider: document.getElementById('provider').value })">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
                     <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
@@ -1289,13 +1296,48 @@ function shakeField(id) {
 </script>
 '''
 
+_SITE_SCRIPT = '''
+<script>
+// --- Shared analytics chokepoint ---
+// track() funnels every analytics event through a single function and fans out
+// to GA4 (gtag) and Umami (cookieless, blocker-resilient). Each tracker is
+// best-effort: if one is blocked or never loaded, the call no-ops.
+// Hard privacy rule: never pass statement content, keywords, filenames, or
+// exact monetary values — provider slugs, counts, and bands only.
+function track(event, params) {
+    params = params || {};
+    if (typeof gtag === 'function') {
+        try { gtag('event', event, params); } catch (e) { /* best-effort */ }
+    }
+    if (window.umami && typeof window.umami.track === 'function') {
+        try { window.umami.track(event, params); } catch (e) { /* best-effort */ }
+    }
+}
+
+// Growth signals shared by every page: outbound clicks (GitHub stars, Ko-fi)
+// and guide → homepage CTA clicks (which guides convert readers into users?).
+document.addEventListener('click', function (e) {
+    const a = e.target.closest('a[href]');
+    if (!a) return;
+    const href = a.getAttribute('href') || '';
+    if (href.includes('github.com/')) {
+        track('outbound_click', { target: 'github' });
+    } else if (href.includes('ko-fi.com/')) {
+        track('outbound_click', { target: 'kofi' });
+    } else if (location.pathname.startsWith('/guides/') && (href === '/' || href.startsWith('/#'))) {
+        track('guide_cta_click', { slug: location.pathname.split('/')[2] || '' });
+    }
+});
+</script>
+'''
+
 _SITE_END = '''
 </body>
 </html>
 '''
 
 # Homepage template = shared shell + homepage-only body and scripts.
-HTML_TEMPLATE = _SITE_OPEN + _HOMEPAGE_BODY + _SITE_MID + _HOMEPAGE_SCRIPT + _SITE_END
+HTML_TEMPLATE = _SITE_OPEN + _HOMEPAGE_BODY + _SITE_MID + _SITE_SCRIPT + _HOMEPAGE_SCRIPT + _SITE_END
 
 class LandlordCardError(ValueError):
     """Landlord mode was requested for a credit-card statement.
@@ -1459,7 +1501,7 @@ def guide_page(slug):
         'publisher': {'@type': 'Organization', 'name': 'Redactly',
                       'url': _base_url()},
     }) + '</script>'
-    template = _SITE_OPEN + jsonld + guide['html_body'] + _SITE_MID + _SITE_END
+    template = _SITE_OPEN + jsonld + guide['html_body'] + _SITE_MID + _SITE_SCRIPT + _SITE_END
     return render_template_string(template,
         title=guide['title'],
         meta_description=guide['meta_description'],
@@ -1481,7 +1523,7 @@ def guides_index():
         '<p>Practical, honest guides to sharing financial documents without oversharing.</p>'
         f'<ul style="list-style:none;padding:0;margin-top:24px">{items}</ul></article>'
     )
-    template = _SITE_OPEN + body + _SITE_MID + _SITE_END
+    template = _SITE_OPEN + body + _SITE_MID + _SITE_SCRIPT + _SITE_END
     return render_template_string(template,
         title='Guides — Redactly',
         meta_description='Guides to redacting bank and card statements for rental applications and expense claims.',
