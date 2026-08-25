@@ -9,6 +9,55 @@ unredacted statements.
 
 GUIDES = {
 
+    'redact-transactions-on-a-bank-statement': {
+        'title': 'How to Redact Transactions on a Bank Statement',
+        'meta_description': 'Step by step: redact transactions on a bank or card statement PDF, keep your income and balances visible, and permanently hide everything else. Free tool, no signup.',
+        'html_body': '''
+<div class="guide">
+    <h1>How to redact transactions on a bank statement</h1>
+    <p class="guide-lead">A practical walkthrough for redacting individual transactions on a bank or credit card statement PDF: deciding what stays visible, removing the rest permanently, and checking the result before you send it.</p>
+
+    <p>There are two reasons people want to redact transactions rather than share a whole statement. Either someone has asked for proof of something specific (rental referencing, an expense claim, a loan affordability check) and does not need the rest of your spending. Or you simply do not want three months of coffees, subscriptions and transfers to friends sitting in a stranger's inbox. Both are fair. A bank statement is one of the most revealing documents you own, and most recipients only ever read a handful of lines on it.</p>
+
+    <p>The good news: you can redact transactions properly, in minutes, with a free tool. The catch is that it has to be done right, because a redaction that only looks like one is worse than no redaction at all.</p>
+
+    <h2>What redacting a transaction actually means</h2>
+    <p>Redacting a transaction means the merchant name, amount and date are removed from the PDF file itself. Not covered with a black rectangle: removed. If you draw a box over a line in a PDF viewer, the text underneath is still in the file, and anyone can select it, copy it, or extract it with a free tool. Plenty of organisations have embarrassed themselves this way.</p>
+    <p>True redaction destroys the underlying text, so copy-paste and text extraction return nothing. There is nothing left to recover. If you want the full story on why boxes fail, read our guide on <a href="/guides/why-black-boxes-fail-pdf-redaction">why black boxes are not redaction</a>.</p>
+
+    <h2>Step 1: decide what stays visible</h2>
+    <p>Before touching the tool, work out what the recipient genuinely needs. This depends on who is asking:</p>
+    <ul>
+        <li><strong>Landlord or letting agent:</strong> your name, the statement period, opening and closing balances, and the money coming in (salary, benefits, regular credits). That is what an affordability check actually reads. Everyday spending proves nothing they care about.</li>
+        <li><strong>Employer or finance team:</strong> only the transactions you are claiming for, with their amounts and dates, plus enough identifying detail (your name, the statement period) to match the claim to you.</li>
+    </ul>
+    <p>Everything else can go. As a rule, keep the document looking like a real statement with some rows visible, rather than a page of solid black with two survivors. We cover the landlord case in more detail in <a href="/guides/do-landlords-accept-redacted-bank-statements">do landlords accept redacted bank statements?</a></p>
+
+    <h2>Step 2: export the statement as a PDF</h2>
+    <p>Download the statement from your bank's app or website. Most UK banks let you export a month or a quarter as a PDF. If you need several months, you will redact each statement separately. Our tool auto-detects common formats including HSBC, Revolut, Wise, AMEX and Barclaycard, and we have layout-specific guides for <a href="/guides/redact-hsbc-statement">HSBC</a>, <a href="/guides/redact-revolut-statement">Revolut</a> and <a href="/guides/redact-wise-statement">Wise</a> statements.</p>
+
+    <h2>Step 3: redact the transactions you do not want to share</h2>
+    <p>Upload the PDF on the <a href="/">homepage</a> and choose how you want to filter:</p>
+    <ul>
+        <li><strong>Expense mode:</strong> type the merchants or descriptions you want to keep (comma-separated). Every transaction that does not match a keyword is redacted.</li>
+        <li><strong>Landlord mode:</strong> income, balances and anything you whitelist stay visible; all other spending is redacted automatically.</li>
+    </ul>
+    <p>Run it and you get a new PDF back within a few seconds. Each redacted row is a solid black block, and the text beneath it has been destroyed. Your original file is never modified.</p>
+
+    <h2>Step 4: verify before you send</h2>
+    <p>Open the downloaded PDF and check every page. Confirm your name and balances are intact, that the transactions you meant to keep are visible, and that nothing important was hidden by an over-broad keyword. Then try the copy-paste test: select a redacted line, copy it, paste into a text editor. Nothing should come out. If text appears, it was covered, not redacted, and you should not send that file.</p>
+
+    <h2>When you should not redact at all</h2>
+    <p>Redaction suits situations where the recipient is verifying something specific: rental applications, expense claims, affordability checks. Mortgage underwriters and UK visa applications generally require unredacted statements in full, and a redacted document will be rejected there. Keep your originals for those, and check the recipient's policy if you are unsure.</p>
+
+    <div class="guide-cta">
+        <p>Ready to redact some transactions?</p>
+        <a href="/">Redact your statement now &rarr;</a>
+    </div>
+</div>
+''',
+    },
+
     'do-landlords-accept-redacted-bank-statements': {
         'title': 'Do Landlords Accept Redacted Bank Statements?',
         'meta_description': 'Can you redact a bank statement for a UK rental application? What landlords and letting agents actually need to see — and what you can safely black out.',

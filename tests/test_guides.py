@@ -24,8 +24,8 @@ def client():
 
 # --- Guide pages -----------------------------------------------------------
 
-def test_guides_dict_has_seven_entries():
-    assert len(GUIDES) == 7
+def test_guides_dict_has_eight_entries():
+    assert len(GUIDES) == 8
 
 
 def test_each_guide_has_required_fields():
@@ -100,12 +100,36 @@ def test_homepage_no_false_claims(client):
 def test_homepage_has_repositioned_copy(client):
     body = client.get('/').get_data(as_text=True)
     assert 'Files deleted after download' in body
-    assert 'Share the line.' in body
-    assert 'Not the ledger.' in body
+    assert 'Redact transactions.' in body
+    assert 'Share the line, not the ledger.' in body
     # Feature-strip headings present.
     assert 'True redaction' in body
     assert 'Nothing stored' in body
     assert 'No account' in body
+
+
+# --- Keyword targeting: "redact transactions" -------------------------------
+
+def test_homepage_targets_redact_transactions_keyword(client):
+    body = client.get('/').get_data(as_text=True)
+    assert '<title>Redact Transactions on Bank &amp; Card Statements | Redactly</title>' in body
+    assert '<h1>Redact transactions.' in body
+    # Phrase appears in the meta description and hero copy too.
+    assert 'Redact transactions on AMEX' in body
+    assert 'redacts the transactions' in body
+
+
+def test_redact_transactions_guide_exists_and_targets_keyword(client):
+    slug = 'redact-transactions-on-a-bank-statement'
+    assert slug in GUIDES
+    resp = client.get('/guides/' + slug)
+    assert resp.status_code == 200
+    body = resp.get_data(as_text=True)
+    assert 'How to Redact Transactions on a Bank Statement' in body
+    # Sitemap picks the new guide up automatically.
+    assert ('/guides/' + slug) in client.get('/sitemap.xml').get_data(as_text=True)
+    # Homepage links to it from the guides section.
+    assert ('href="/guides/' + slug + '"') in client.get('/').get_data(as_text=True)
 
 
 # --- LLM/AI discoverability ---------------------------------------------------

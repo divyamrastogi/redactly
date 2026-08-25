@@ -653,7 +653,7 @@ _HOMEPAGE_BODY = '''
               "applicationCategory": "UtilityApplication",
               "operatingSystem": "Web",
               "offers": {"@type": "Offer", "price": "0", "priceCurrency": "GBP", "description": "Free and open source. No account needed."},
-              "description": "Redact bank and credit card statement PDFs with true redaction: keep only chosen transactions visible for rental applications and expense claims. Supports AMEX, Barclaycard, HSBC, Revolut, Wise and other UK banks."
+              "description": "Redact transactions on bank and credit card statement PDFs with true redaction: keep only chosen transactions visible for rental applications and expense claims. Supports AMEX, Barclaycard, HSBC, Revolut, Wise and other UK banks."
             }
             </script>
 
@@ -661,8 +661,8 @@ _HOMEPAGE_BODY = '''
             <section class="hero-split">
                 <div class="hero-copy">
                     <span class="hero-badge">🔒 Private by design</span>
-                    <h1>Share the line.<br>Not the ledger.</h1>
-                    <p class="hero-sub">Redactly permanently blacks out every transaction you don't want a landlord or employer to see — the text underneath is destroyed, not just covered. Free, no signup.</p>
+                    <h1>Redact transactions.<br>Share the line, not the ledger.</h1>
+                    <p class="hero-sub">Redactly permanently redacts the transactions you don't want a landlord or employer to see — the text underneath is destroyed, not just covered. Free, no signup.</p>
                     <div class="hero-cta-row">
                         <a href="#tool" class="btn-primary">Redact my statement</a>
                         <span class="hero-note">Files deleted after download</span>
@@ -803,6 +803,19 @@ _HOMEPAGE_BODY = '''
                 <p class="pricing-sub">The code is <a href="https://github.com/divyamrastogi/redactly" rel="noopener">open source</a> — use the hosted copy or run it yourself, free either way.</p>
                 <p class="pricing-sub">If it saved you time, you can <a href="https://ko-fi.com/javascriptbit" rel="noopener" target="_blank">buy me a Ko-fi</a> — entirely optional.</p>
             </section>
+
+            <!-- Guides -->
+            <div class="custom-section" id="guides">
+                <h2>New to redacting statements?</h2>
+                <p style="line-height:2">
+                    <a href="/guides/redact-transactions-on-a-bank-statement">How to redact transactions on a bank statement</a> ·
+                    <a href="/guides/do-landlords-accept-redacted-bank-statements">Do landlords accept redacted bank statements?</a> ·
+                    <a href="/guides/redact-bank-statement-for-rental-application">Redacting a statement for a rental application</a> ·
+                    <a href="/guides/redact-amex-statement-for-expense-claims">Redacting an AMEX statement for expense claims</a> ·
+                    <a href="/guides/why-black-boxes-fail-pdf-redaction">Why black boxes fail</a> ·
+                    <a href="/guides">All guides</a>
+                </p>
+            </div>
 
             <!-- Add more providers -->
             <div class="custom-section" id="custom-request">
@@ -1473,8 +1486,8 @@ def index():
     usage_count = update_usage_counter()
     providers   = get_all_providers()
     return render_template_string(HTML_TEMPLATE,
-        title='Redactly — Share Bank & Card Statements Without Oversharing',
-        meta_description='Blackout every transaction on your AMEX or Barclaycard statement except the ones you choose. For rental applications and expense claims. True redaction — text is destroyed, not hidden. Files deleted after download.',
+        title='Redact Transactions on Bank & Card Statements | Redactly',
+        meta_description='Redact transactions on AMEX, Barclaycard, HSBC, Revolut and Wise statement PDFs. Keep only the rows you choose — text destroyed, not hidden. Free, no signup.',
         canonical=_base_url() + '/',
         usage_count=usage_count,
         providers=providers)
@@ -1578,7 +1591,7 @@ def llms_txt():
     )
     body = f"""# Redactly
 
-> Web tool that redacts bank and credit-card statement PDFs using true
+> Web tool that redacts transactions on bank and credit-card statement PDFs using true
 > redaction (text destroyed, not covered). Users keep only the transactions
 > they choose visible — for UK rental applications and expense claims — while
 > names, statement periods, and balances stay intact.
