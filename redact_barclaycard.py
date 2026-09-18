@@ -210,7 +210,15 @@ def group_transactions(page):
                     next_row = rows[sorted_y_keys[j]]
                     has_date   = any(DATE_PATTERN.match(s["text"]) and is_in_x_range(s["bbox"], d_min, d_max) for s in next_row)
                     has_amount = any(AMOUNT_PATTERN.match(s["text"]) and is_in_x_range(s["bbox"], a_min, a_max) for s in next_row)
-                    wrap_spans = [s for s in next_row if is_in_x_range(s["bbox"], m_min, m_max)]
+                    # A lone 'e' contactless marker is never merchant text. When
+                    # y-bucket rounding puts it in its own row, swallowing it here
+                    # stretches the row's redaction bar over the NEXT transaction
+                    # (the one the 'e' actually belongs to).
+                    wrap_spans = [
+                        s for s in next_row
+                        if is_in_x_range(s["bbox"], m_min, m_max)
+                        and not (s["text"].strip() == 'e' and is_in_x_range(s["bbox"], e_min, e_max))
+                    ]
                     if not has_date and not has_amount and wrap_spans:
                         merch_spans.extend(wrap_spans)
                         j += 1
@@ -365,6 +373,11 @@ def redact_barclaycard(input_path, output_path, keep_keywords, keep_credits=Fals
 
         logger.info(f"Page {page_num+1}: found {len(transactions)} transactions")
 
+        def _tx_kept(tx):
+            return (any(kw.lower() in tx["merchant"].lower() for kw in keep_keywords)
+                    or (keep_credits and tx.get("is_credit")))
+
+        redact_rects = []
         for tx in transactions:
             merchant = tx["merchant"]
             is_kept  = (any(kw.lower() in merchant.lower() for kw in keep_keywords)
@@ -387,8 +400,30 @@ def redact_barclaycard(input_path, output_path, keep_keywords, keep_credits=Fals
                     y0 = min(r.y0 for r in all_bboxes) - 2
                     y1 = max(r.y1 for r in all_bboxes) + 2
                     x0, x1 = tx.get("full_row_x", (48, 290))
-                    full_row = fitz.Rect(x0, y0, x1, y1)
-                    page.add_redact_annot(full_row, fill=(0, 0, 0))
+                    redact_rects.append(fitz.Rect(x0, y0, x1, y1))
+
+        # Whitelisted rows must survive: apply_redactions deletes any text whose
+        # bbox intersects a redaction rect, so clamp every rect away from kept
+        # rows' spans (row padding can bleed into an adjacent row).
+        kept_boxes = []
+        for tx in transactions:
+            if _tx_kept(tx):
+                kept_boxes.extend([tx["date_bbox"]] + tx["merchant_bboxes"] +
+                                  ([tx["amount_bbox"]] if tx["amount_bbox"] else []) +
+                                  tx["e_bboxes"])
+        for rect in redact_rects:
+            for kb in kept_boxes:
+                if rect.intersects(kb):
+                    if kb.y0 >= rect.y0 and kb.y1 > rect.y1:
+                        # kept box hangs below the rect — cut the rect's bottom
+                        rect.y1 = min(rect.y1, kb.y0 - 0.5)
+                    elif kb.y1 <= rect.y1 and kb.y0 < rect.y0:
+                        # kept box hangs above the rect — cut the rect's top
+                        rect.y0 = max(rect.y0, kb.y1 + 0.5)
+            if rect.y1 > rect.y0 and rect.x1 > rect.x0:
+                page.add_redact_annot(rect, fill=(0, 0, 0))
+            else:
+                logger.warning(f"  redaction rect collapsed after clamping: {rect}")
 
         page.apply_redactions()
 
