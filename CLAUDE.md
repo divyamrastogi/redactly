@@ -30,7 +30,7 @@ The application uses a modular architecture with provider-specific configuration
 
 - **app.py**: Flask web server handling routes, file uploads, and serving the HTML interface
   - Routes: `/` (main page), `/download/<filename>` (processed PDF download)
-  - Tracks usage in `usage_counter.txt`
+  - Tracks successfully redacted statements in `usage_counter.txt` (homepage views are read-only and never increment it)
   - Inline HTML template using Tailwind CSS with provider selection dropdown
   
 - **redact_generic.py**: Main redaction logic (NEW)

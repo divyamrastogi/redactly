@@ -21,20 +21,24 @@ app = Flask(__name__)
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Function to handle the usage counter
-def update_usage_counter():
-    counter_file = 'usage_counter.txt'
+# Usage counter: incremented once per successfully redacted statement,
+# read-only everywhere else (the homepage must not bump it on page views).
+COUNTER_FILE = 'usage_counter.txt'
+
+def get_usage_count():
+    """Read the counter without incrementing it."""
     try:
-        if os.path.exists(counter_file):
-            with open(counter_file, 'r+') as f:
-                count = int(f.read() or '0') + 1
-                f.seek(0)
-                f.write(str(count))
-                f.truncate()
-        else:
-            count = 1
-            with open(counter_file, 'w') as f:
-                f.write(str(count))
+        with open(COUNTER_FILE) as f:
+            return int((f.read() or '0').strip() or '0')
+    except Exception as e:
+        logger.error(f"Error reading usage counter: {str(e)}")
+        return None
+
+def update_usage_counter():
+    try:
+        count = (get_usage_count() or 0) + 1
+        with open(COUNTER_FILE, 'w') as f:
+            f.write(str(count))
         return count
     except Exception as e:
         logger.error(f"Error updating usage counter: {str(e)}")
@@ -1483,7 +1487,7 @@ def process_single_file(file, keywords, provider, enhanced_privacy, mode='custom
 
 @app.route('/', methods=['GET'])
 def index():
-    usage_count = update_usage_counter()
+    usage_count = get_usage_count()
     providers   = get_all_providers()
     return render_template_string(HTML_TEMPLATE,
         title='Redact Transactions on Bank & Card Statements | Redactly',
@@ -1622,7 +1626,6 @@ Key facts:
 @app.route('/redact', methods=['POST'])
 def redact_endpoint():
     """Process a single PDF and return JSON with download URL."""
-    update_usage_counter()
 
     if 'pdf' not in request.files:
         return jsonify({'error': 'No file uploaded'}), 400
@@ -1646,6 +1649,7 @@ def redact_endpoint():
             file, keywords, provider, enhanced,
             mode=mode, keep_credits=is_landlord
         )
+        update_usage_counter()
         display_name = os.path.basename(redacted_path)
         return jsonify({
             'filename':         display_name,
@@ -1799,11 +1803,7 @@ def stats():
         abort(404)
 
     # Usage counter value
-    try:
-        with open('usage_counter.txt') as f:
-            usage_count = int((f.read() or '0').strip())
-    except Exception:
-        usage_count = 0
+    usage_count = get_usage_count() or 0
 
     # Unrecognized-upload line count
     try:
