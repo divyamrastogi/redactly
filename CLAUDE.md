@@ -20,7 +20,7 @@ pip install -r requirements.txt
 python app.py
 # Server runs on http://127.0.0.1:5000
 
-# Run in production mode (as configured for Heroku)
+# Run in production mode (Railway starts this via the Procfile)
 gunicorn app:app
 ```
 
@@ -83,6 +83,10 @@ The application uses a modular architecture with provider-specific configuration
 - No database - only file-based storage for the usage counter
 - Google Analytics is integrated for usage tracking
 - The `node_modules` directory exists but appears unused (no package.json)
+
+## TypeSafe Jev judgment layer (optional)
+
+`judgment.py` wraps the TypeSafe System One API for semantic judgments. Everything is env-gated (`TYPESAFE_API_KEY` + `JEV_SEMANTIC_KEYWORDS` / `JEV_PII_DISAMBIGUATION` / `JEV_GENERIC_ROWS`, value `on`) and **fail-open**: any API failure returns None and the engines fall back to regex/substring behaviour, byte-identical to pre-Jev. Batching is one request per page (state + many questions, chunked at 40). No statement text is ever logged. Seam points: `redact_generic._attach_semantic_verdicts`, `redact_bank_generic._semantic_keyword_verdicts` / `_apply_pii_pass` / `_semantic_columns`. Tune thresholds with `eval_judgments.py` before enabling flags in prod; tests are all mocked (`tests/test_judgment.py`, `tests/test_semantic_judgments.py`).
 
 ## Provider Configuration
 

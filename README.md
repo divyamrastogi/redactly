@@ -27,6 +27,19 @@ Try it live at [redact.javascriptbit.com](https://redact.javascriptbit.com). Fre
 - **Amount preservation**: Accurate totals for kept transactions
 - **Same-line detection**: Finds keywords across text elements on the same line
 
+### 🧠 AI-assisted matching (opt-in, off by default)
+
+Optional TypeSafe Jev ("semantic if") judgments can upgrade three decisions from literal rules to semantic ones. **Nothing changes until you set the env vars** — by default no statement content is ever sent anywhere.
+
+| Env var | Enables |
+| --- | --- |
+| `TYPESAFE_API_KEY` | API key for [TypeSafe](https://typesafe.ai) — all Jev features are off without it |
+| `JEV_SEMANTIC_KEYWORDS=on` | Semantic keyword matching: "fuel" keeps SHELL/BP, "travel" keeps TFL/Uber, even without a substring match |
+| `JEV_PII_DISAMBIGUATION=on` | In the generic-bank PII pass, PERSON findings inside the transaction region are judged merchant-vs-person instead of being blanket-dropped |
+| `JEV_GENERIC_ROWS=on` | For unknown bank layouts, Jev locates the transaction-table header line and maps informal labels ("When / Who to / How much") to columns before the usual credibility rules apply |
+
+**Privacy trade-off, stated plainly:** with a flag on, the text needed for each judgment (transaction descriptions, ambiguous name candidates, header label lines) is sent to TypeSafe's API for classification. Failures fail open — if the API is down, redaction falls back to the standard regex/substring behaviour. No statement text is ever logged. Run `venv/bin/python eval_judgments.py` to measure accuracy on labeled samples and your own statement fixtures before enabling anything in production.
+
 ## Quick Start
 
 ### Local Development
@@ -67,7 +80,7 @@ pdf-redact/
 ├── redact_transactions.py      # Legacy AMEX-specific redaction
 ├── provider_config.py          # Provider configurations
 ├── requirements.txt            # Python dependencies
-├── Procfile                    # Heroku deployment config
+├── Procfile                    # Process config (used by Railway)
 ├── CLAUDE.md                   # Development documentation
 └── README.md                   # This file
 ```

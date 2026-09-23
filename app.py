@@ -1651,6 +1651,11 @@ def redact_endpoint():
         )
         update_usage_counter()
         display_name = os.path.basename(redacted_path)
+        # Observability only: whether the opt-in Jev semantic keyword layer
+        # was in a position to act (flag on + keywords given). Never reflects
+        # or carries statement content.
+        import judgment
+        semantic_enhanced = bool(keywords) and judgment.enabled('semantic_keywords')
         return jsonify({
             'filename':         display_name,
             'download_url':     f'/download/{redacted_path}',
@@ -1659,6 +1664,7 @@ def redact_endpoint():
             'provider_detected': provider_detected,
             'provider':         detected_provider,
             'beta':             bool(beta),
+            'semantic_enhanced': semantic_enhanced,
         })
     except LandlordCardError as e:
         # Friendly 400: landlord mode doesn't apply to credit-card statements.

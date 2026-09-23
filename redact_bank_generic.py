@@ -147,22 +147,40 @@ def _detect_columns(spans, page_width):
     """
     best = None
     for line in _cluster_rows(spans, tol=5):
-        cands = []
-        for phrase in _merge_line_phrases(line['spans']):
-            role = _header_role(phrase['text'])
-            if role:
-                cands.append((phrase, role))
-        roles_found = {role for _, role in cands}
-        if (len(roles_found) >= 3
-                and roles_found & {'date', 'description'}
-                and roles_found & {'paid_in', 'paid_out', 'balance', 'amount'}):
+        cands = _header_candidates(line['spans'])
+        if _credible_header(cands):
             if best is None or len(cands) > len(best):
                 best = cands
     if best is None:
         logger.info("No credible transaction header line — leaving page untouched.")
         return None, None
+    return _columns_from_header_line(best, page_width)
 
-    header_line = best
+
+def _header_candidates(line_spans):
+    """(phrase, role) pairs for the header-label phrases on one baseline."""
+    cands = []
+    for phrase in _merge_line_phrases(line_spans):
+        role = _header_role(phrase['text'])
+        if role:
+            cands.append((phrase, role))
+    return cands
+
+
+def _credible_header(cands):
+    """The credibility bar: >= 3 DISTINCT roles, including a date or
+    description column AND at least one money column — prose lines that echo
+    label words and 2-label summary tables never qualify."""
+    roles_found = {role for _, role in cands}
+    return (len(roles_found) >= 3
+            and roles_found & {'date', 'description'}
+            and roles_found & {'paid_in', 'paid_out', 'balance', 'amount'})
+
+
+def _columns_from_header_line(header_line, page_width):
+    """Build (columns, header_y) from a chosen header line's (phrase, role)
+    pairs. The band geometry shared by the label-matching path and the Jev
+    fallback, so both produce identical column models."""
     header_y = min(p['bbox'][3] for p, _ in header_line)  # bottom of header text
 
     # Sort header spans by X-centre and split the page into bands at the
@@ -197,6 +215,46 @@ def _detect_columns(spans, page_width):
 
     logger.info(f"Detected {len(columns)} columns: {[(c['role'], round(c['x0']), round(c['x1'])) for c in columns]}")
     return columns, header_y
+
+
+def _semantic_columns(spans, page_width):
+    """Jev fallback for pages whose header line defeats the label matcher
+    (unknown bank, unusual wording): ask the judgment layer which row phrase
+    is the table header, then reuse the normal role mapping and band
+    construction on it. Returns (None, None) when nothing credible emerges —
+    the identical outcome to the label path failing, so the page is left
+    untouched exactly as before (fail-open).
+    """
+    import judgment  # lazy: keeps the default path SDK-free
+
+    rows = _cluster_rows(spans, tol=5)
+    candidates = []
+    for ri, row in enumerate(rows):
+        phrases = _merge_line_phrases(row['spans'])
+        text = ' '.join(p['text'] for p in phrases).strip()
+        if 2 <= len(phrases) <= 8 and 0 < len(text) <= 60:
+            candidates.append((ri, text))
+    best_index = judgment.pick_header_line(candidates)
+    if best_index is None:
+        return None, None
+
+    # The picked line's labels may use wording the label table doesn't know
+    # ("When / Who to / How much"), so the roles come from Jev too — then the
+    # same credibility bar as the label path decides whether to proceed.
+    phrases = _merge_line_phrases(rows[best_index]['spans'])
+    roles = judgment.assign_header_roles([p['text'] for p in phrases])
+    if roles is None:
+        return None, None
+    cands = [
+        (phrase, role)
+        for phrase, role in zip(phrases, roles)
+        if role in ('date', 'description', 'paid_out', 'paid_in', 'balance', 'amount')
+    ]
+    if not _credible_header(cands):
+        logger.info("Jev-picked header line failed the credibility check — leaving page untouched.")
+        return None, None
+    logger.info("Using Jev-picked header line for column bands.")
+    return _columns_from_header_line(cands, page_width)
 
 
 def _assign_role(span, columns):
@@ -322,6 +380,30 @@ def _is_continuation(cells):
 
 
 # ── Per-page redaction ──────────────────────────────────────────────────────
+def _semantic_keyword_verdicts(descriptions, keep_keywords):
+    """One batched Jev judgment per transaction-group description.
+
+    Returns a list aligned with ``descriptions`` (True = belongs to one of
+    the user's categories, False = does not, None = no verdict), or None
+    when the feature is off or the batch failed — callers then fall back to
+    the substring whitelist alone (fail-open, byte-identical behaviour).
+    """
+    import judgment  # lazy: keeps the default path SDK-free
+
+    if not keep_keywords or not judgment.enabled('semantic_keywords'):
+        return None
+    judged = [(i, d) for i, d in enumerate(descriptions) if d]
+    if not judged:
+        return None
+    verdicts = judgment.semantic_keep_batch(keep_keywords, [d for _, d in judged])
+    if verdicts is None:
+        return None
+    out = [None] * len(descriptions)
+    for (i, _), v in zip(judged, verdicts):
+        out[i] = v
+    return out
+
+
 def _redact_balance_amounts(page, rows, columns, header_y):
     """Financial-summary redaction: remove amount-shaped spans that reveal the
     account's balances rather than the kept transactions.
@@ -369,11 +451,18 @@ def _redact_dateless(page, rows, columns, header_y, keep_keywords, keep_credits,
         else:
             current = None  # detached row: furniture/boilerplate — untouched
 
-    for g in groups:
-        description = " ".join(
-            c["text"] for c in g["cells"] if c["role"] == "description").strip()
+    descriptions = [
+        " ".join(c["text"] for c in g["cells"] if c["role"] == "description").strip()
+        for g in groups
+    ]
+    semantic = _semantic_keyword_verdicts(descriptions, keep_keywords)
+
+    for gi, g in enumerate(groups):
+        description = descriptions[gi]
         is_kw = any(kw.lower() in description.lower()
                     for kw in keep_keywords) if keep_keywords else False
+        if not is_kw and semantic is not None and semantic[gi] is True:
+            is_kw = True  # Jev verdict: belongs to one of the user's categories
         is_credit = _is_credit(g["head"], columns) if keep_credits else False
         amount = _row_amount(g["head"])
         if is_kw or is_credit:
@@ -401,6 +490,12 @@ def _redact_page(page, keep_keywords, kept_rows, keep_credits=False,
     """
     spans = _collect_spans(page)
     columns, header_y = _detect_columns(spans, page.rect.width)
+    if not columns:
+        # Unknown layout: the opt-in Jev fallback tries to locate the header
+        # line semantically before giving up on the page entirely.
+        import judgment
+        if judgment.enabled('generic_rows'):
+            columns, header_y = _semantic_columns(spans, page.rect.width)
     if not columns:
         logger.warning(f"No column header line detected on page — leaving it untouched.")
         return None
@@ -437,13 +532,20 @@ def _redact_page(page, keep_keywords, kept_rows, keep_credits=False,
         else:
             current = None  # detached row: totals/furniture — untouched
 
-    for g in groups:
-        description = " ".join(
-            c["text"] for c in g["cells"] if c["role"] == "description").strip()
+    descriptions = [
+        " ".join(c["text"] for c in g["cells"] if c["role"] == "description").strip()
+        for g in groups
+    ]
+    semantic = _semantic_keyword_verdicts(descriptions, keep_keywords)
+
+    for gi, g in enumerate(groups):
+        description = descriptions[gi]
         if ALWAYS_KEEP_RE.search(description):
             continue  # brought/carried-forward rows are structure, not spend
         is_kw = any(kw.lower() in description.lower()
                     for kw in keep_keywords) if keep_keywords else False
+        if not is_kw and semantic is not None and semantic[gi] is True:
+            is_kw = True  # Jev verdict: belongs to one of the user's categories
         is_credit = _is_credit(g["cells"], columns) if keep_credits else False
         amount = _row_amount(g["cells"])
         if is_kw or is_credit:
@@ -478,12 +580,35 @@ def _apply_pii_pass(page, page_num, header_y, pii_mode,
     number, sort code, IBAN — because a landlord statement must prove whose
     account received the rent.
     """
-    from pii_layer import (LANDLORD_PRESERVED_TYPES, analyze_page_pii,
-                           apply_pii_redactions)
-    findings = analyze_page_pii(
-        page, header_y=header_y, structured_only=structured_only,
-        exclude_types=LANDLORD_PRESERVED_TYPES if landlord else frozenset(),
-    )
+    from pii_layer import (LANDLORD_PRESERVED_TYPES, STRUCTURED_TYPES,
+                           analyze_page_pii, apply_pii_redactions)
+    exclude_types = LANDLORD_PRESERVED_TYPES if landlord else frozenset()
+
+    import judgment
+    if header_y is not None and judgment.enabled('pii_disambiguation'):
+        # Opt-in semantic disambiguation: instead of blanket-dropping every
+        # PERSON/PHONE below the transaction header (the benchmarked
+        # merchant-name false-positive defence), ask Jev which of those
+        # candidates are actually people. PERSON candidates are redacted like
+        # above-header findings; PHONE stays dropped (a merchant phone is
+        # indistinguishable from a person's). Everything else — structured
+        # types, the header_y rule, structured_only pages — is unchanged.
+        findings = analyze_page_pii(page, header_y=None,
+                                    structured_only=structured_only,
+                                    exclude_types=exclude_types)
+        above, below = [], []
+        for f in findings:
+            if f["bbox"][1] <= header_y or f["entity_type"] in STRUCTURED_TYPES:
+                above.append(f)
+            elif f["entity_type"] == "PERSON":
+                below.append(f)
+        person_idx = set(judgment.classify_person_like(page, below))
+        findings = above + [f for i, f in enumerate(below) if i in person_idx]
+    else:
+        findings = analyze_page_pii(
+            page, header_y=header_y, structured_only=structured_only,
+            exclude_types=exclude_types,
+        )
     counts = dict(Counter(f["entity_type"] for f in findings))
     logger.info(f"PII {pii_mode} page {page_num + 1}: {counts or 'none'}")
     if pii_mode == "enforce":
