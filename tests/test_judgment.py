@@ -194,6 +194,45 @@ def test_semantic_keep_batch_fail_open(monkeypatch):
     assert judgment.semantic_keep_batch(["fuel"], ["SHELL"]) is None
 
 
+# ── semantic_instruction_batch ──────────────────────────────────────────────
+def test_instruction_batch_disabled_or_empty(monkeypatch):
+    monkeypatch.delenv("JEV_INSTRUCTIONS", raising=False)
+    monkeypatch.delenv("TYPESAFE_API_KEY", raising=False)
+    assert judgment.semantic_instruction_batch("gambling", ["BET365"]) is None
+    _set_feature_on(monkeypatch, "JEV_INSTRUCTIONS")
+    assert judgment.semantic_instruction_batch("", ["BET365"]) is None
+    assert judgment.semantic_instruction_batch("   ", ["BET365"]) is None
+    assert judgment.semantic_instruction_batch("gambling", []) is None
+
+
+def test_instruction_batch_threshold_and_state(monkeypatch):
+    _set_feature_on(monkeypatch, "JEV_INSTRUCTIONS")
+    captured = {}
+
+    def fake_decide(state, questions, timeout=judgment.DEFAULT_TIMEOUT):
+        captured["state"] = state
+        captured["question_ids"] = sorted(questions)
+        return {
+            "line_0": SimpleNamespace(noul=0.9),
+            "line_1": SimpleNamespace(noul=0.5),
+        }
+
+    monkeypatch.setattr(judgment, "decide_batch", fake_decide)
+    verdicts = judgment.semantic_instruction_batch(
+        "gambling and crypto", ["BET365 CASINO", "TESCO STORES"])
+
+    assert verdicts == [True, False]
+    assert captured["state"]["instruction"] == "gambling and crypto"
+    assert captured["state"]["lines"][0] == {"n": 0, "description": "BET365 CASINO"}
+    assert captured["question_ids"] == ["line_0", "line_1"]
+
+
+def test_instruction_batch_fail_open(monkeypatch):
+    _set_feature_on(monkeypatch, "JEV_INSTRUCTIONS")
+    monkeypatch.setattr(judgment, "decide_batch", lambda s, q, timeout=20: None)
+    assert judgment.semantic_instruction_batch("gambling", ["BET365"]) is None
+
+
 # ── classify_person_like ────────────────────────────────────────────────────
 def test_classify_person_like_person_verdicts_only(monkeypatch):
     import fitz

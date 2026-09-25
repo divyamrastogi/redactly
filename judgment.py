@@ -70,6 +70,7 @@ _FLAGS = {
     "semantic_keywords": "JEV_SEMANTIC_KEYWORDS",
     "pii_disambiguation": "JEV_PII_DISAMBIGUATION",
     "generic_rows": "JEV_GENERIC_ROWS",
+    "instructions": "JEV_INSTRUCTIONS",
 }
 
 
@@ -256,6 +257,56 @@ def classify_person_like(page, findings):
         if answer.choice == "person" and (answer.confidence or 0) >= PERSON_CONFIDENCE:
             person_indices.append(i)
     return person_indices
+
+
+def semantic_instruction_batch(instruction, descriptions,
+                               threshold=KEYWORD_THRESHOLD):
+    """Judge whether each transaction matches a free-text removal instruction.
+
+    ``instruction`` is the user's plain-English sentence ("gambling and
+    crypto", "streaming subscriptions"); ``descriptions`` are the statement's
+    transaction descriptions. Returns a list aligned with ``descriptions``
+    (True = matches the instruction, False = does not, None = no verdict),
+    or None when the feature is off/fails. Callers MUST fail open to "no
+    extra redactions" — an API outage must never guess at deletions.
+    """
+    instruction = (instruction or "").strip()
+    if not enabled("instructions") or not instruction or not descriptions:
+        return None
+
+    state = {
+        "instruction": instruction,
+        "lines": [
+            {"n": i, "description": d} for i, d in enumerate(descriptions)
+        ],
+    }
+    questions = {
+        "line_{}".format(i): Noul(
+            instructions=(
+                "Transaction description `lines[{i}].description` from the user's "
+                "own bank or credit card statement. The user asked to remove "
+                "transactions matching their instruction `instruction`. Does this "
+                "transaction match what the user described? Judge the merchant's "
+                "core business, not exact words ('Bet365 Casino' matches 'gambling'; "
+                "'TESCO' does not). Unclear or borderline cases must be false — "
+                "this decides what gets permanently redacted."
+            ).format(i=i),
+            criteria={
+                "true": "The transaction clearly matches the user's removal instruction.",
+                "false": "It does not match, or that is unclear.",
+            },
+        )
+        for i in range(len(descriptions))
+    }
+    answers = decide_batch(state, questions)
+    if answers is None:
+        return None
+
+    verdicts = []
+    for i in range(len(descriptions)):
+        prob = getattr(answers["line_{}".format(i)], "noul", None)
+        verdicts.append(None if prob is None else prob >= threshold)
+    return verdicts
 
 
 _HEADER_ROLES = {

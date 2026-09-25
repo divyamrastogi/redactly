@@ -34,11 +34,16 @@ Optional TypeSafe Jev ("semantic if") judgments can upgrade three decisions from
 | Env var | Enables |
 | --- | --- |
 | `TYPESAFE_API_KEY` | API key for [TypeSafe](https://typesafe.ai) — all Jev features are off without it |
-| `JEV_SEMANTIC_KEYWORDS=on` | Semantic keyword matching: "fuel" keeps SHELL/BP, "travel" keeps TFL/Uber, even without a substring match |
+| `JEV_SEMANTIC_KEYWORDS=on` | Semantic keyword matching: "fuel" keeps SHELL/BP, "travel" keeps TFL/Uber, even without a substring match — in **Keep matching** or **Redact matching** direction |
+| `JEV_INSTRUCTIONS=on` | Plain-English removal box on the form: users describe what to redact ("gambling, crypto, streaming subscriptions") and each transaction is judged against their sentence. The box only renders when this flag + key are set |
 | `JEV_PII_DISAMBIGUATION=on` | In the generic-bank PII pass, PERSON findings inside the transaction region are judged merchant-vs-person instead of being blanket-dropped |
 | `JEV_GENERIC_ROWS=on` | For unknown bank layouts, Jev locates the transaction-table header line and maps informal labels ("When / Who to / How much") to columns before the usual credibility rules apply |
 
-**Privacy trade-off, stated plainly:** with a flag on, the text needed for each judgment (transaction descriptions, ambiguous name candidates, header label lines) is sent to TypeSafe's API for classification. Failures fail open — if the API is down, redaction falls back to the standard regex/substring behaviour. No statement text is ever logged. Run `venv/bin/python eval_judgments.py` to measure accuracy on labeled samples and your own statement fixtures before enabling anything in production.
+**Privacy trade-off, stated plainly:** with a flag on, the text needed for each judgment (transaction descriptions, ambiguous name candidates, header label lines) is sent to TypeSafe's API for classification. Failures fail open — if the API is down, redaction falls back to the standard regex/substring behaviour. In **Redact matching** direction and instruction mode the fail-open direction is inverted on purpose: an API failure degrades to exact matching only, so deletions are never guessed. No statement text is ever logged. Run `venv/bin/python eval_judgments.py` to measure accuracy on labeled samples and your own statement fixtures before enabling anything in production.
+
+### 🔁 Redact matching (no AI needed)
+
+The **Keep matching / Redact matching** toggle on the form works without any API key: keywords become a blacklist — matching transactions are blacked out, everything else stays visible. Balances and page furniture are still never touched, and the output total is always the sum of the transactions left visible.
 
 ## Quick Start
 

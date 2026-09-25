@@ -268,25 +268,29 @@ def redact_financial_details_amex(page):
     
     return redaction_count
 
-def redact_barclaycard_with_privacy(file_path: str, keep_keywords: list, 
-                                   output_filename: str, redact_financial: bool = True):
+def redact_barclaycard_with_privacy(file_path: str, keep_keywords: list,
+                                   output_filename: str, redact_financial: bool = True,
+                                   direction: str = 'keep', instruction: str = None):
     """
     Enhanced redaction for Barclaycard statements with financial privacy.
-    
+
     Args:
         file_path: Path to input PDF
         keep_keywords: Keywords for transactions to keep
         output_filename: Output filename
         redact_financial: Whether to redact financial details
-    
+        direction: 'keep' (default) or 'redact' — passthrough to redact_pdf_generic
+        instruction: Optional free-text removal sentence — passthrough
+
     Returns:
         Tuple of (output_path, total_remaining)
     """
     logger.info(f"Starting enhanced Barclaycard redaction (financial privacy: {redact_financial})")
-    
+
     # First, do the standard transaction redaction
     output_path, total_remaining = redact_pdf_generic(
-        file_path, keep_keywords, output_filename, 'barclaycard'
+        file_path, keep_keywords, output_filename, 'barclaycard',
+        direction=direction, instruction=instruction
     )
     
     if not redact_financial:
@@ -326,25 +330,29 @@ def redact_barclaycard_with_privacy(file_path: str, keep_keywords: list,
     
     return output_path, total_remaining
 
-def redact_amex_with_privacy(file_path: str, keep_keywords: list, 
-                            output_filename: str, redact_financial: bool = True):
+def redact_amex_with_privacy(file_path: str, keep_keywords: list,
+                            output_filename: str, redact_financial: bool = True,
+                            direction: str = 'keep', instruction: str = None):
     """
     Enhanced redaction for AMEX statements with financial privacy.
-    
+
     Args:
         file_path: Path to input PDF
         keep_keywords: Keywords for transactions to keep
         output_filename: Output filename
         redact_financial: Whether to redact financial details
-    
+        direction: 'keep' (default) or 'redact' — passthrough to redact_pdf_generic
+        instruction: Optional free-text removal sentence — passthrough
+
     Returns:
         Tuple of (output_path, total_remaining)
     """
     logger.info(f"Starting enhanced AMEX redaction (financial privacy: {redact_financial})")
-    
+
     # First, do the standard transaction redaction
     output_path, total_remaining = redact_pdf_generic(
-        file_path, keep_keywords, output_filename, 'amex'
+        file_path, keep_keywords, output_filename, 'amex',
+        direction=direction, instruction=instruction
     )
     
     if not redact_financial:

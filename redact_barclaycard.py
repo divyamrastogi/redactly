@@ -353,13 +353,49 @@ def redact_financial_summary(doc):
         page.apply_redactions()
 
 
-def redact_barclaycard(input_path, output_path, keep_keywords, keep_credits=False):
+def _semantic_verdicts_for(keep_keywords, instruction, descriptions):
+    """Batched Jev verdicts for one page's merchant descriptions.
+
+    Returns ``(kw_verdicts, instruction_verdicts)``, each aligned with
+    ``descriptions``; either entry is None when its feature is off or the
+    batch failed — callers then fall back to exact substring matching only
+    (fail-open; deletion decisions are never guessed).
+    """
+    import judgment  # lazy: keeps the default path SDK-free
+
+    kw_out = ins_out = None
+    judged = [(i, d) for i, d in enumerate(descriptions) if d]
+    texts = [d for _, d in judged]
+    if keep_keywords and judgment.enabled('semantic_keywords') and texts:
+        v = judgment.semantic_keep_batch(keep_keywords, texts)
+        if v is not None:
+            kw_out = [None] * len(descriptions)
+            for (i, _), x in zip(judged, v):
+                kw_out[i] = x
+    if instruction and instruction.strip() \
+            and judgment.enabled('instructions') and texts:
+        v = judgment.semantic_instruction_batch(instruction, texts)
+        if v is not None:
+            ins_out = [None] * len(descriptions)
+            for (i, _), x in zip(judged, v):
+                ins_out[i] = x
+    return kw_out, ins_out
+
+
+def redact_barclaycard(input_path, output_path, keep_keywords, keep_credits=False,
+                       direction="keep", instruction=None):
     """
     Redact all transactions from a BarclayCard statement that don't match keep_keywords.
     Adds a sum total annotation for the kept transactions.
 
     When ``keep_credits`` is True, credit rows (CR-suffixed refunds / money in)
     are kept in addition to keyword matches.
+
+    ``direction`` selects the matching polarity: ``"keep"`` (default) is the
+    historic whitelist — matching rows survive, everything else is redacted;
+    ``"redact"`` inverts it. ``instruction`` (optional, requires the
+    JEV_INSTRUCTIONS flag + API key) is the user's free-text removal sentence;
+    rows its batched Jev judgment matches are always redacted.
     """
     doc  = fitz.open(input_path)
     kept = []
@@ -373,15 +409,39 @@ def redact_barclaycard(input_path, output_path, keep_keywords, keep_credits=Fals
 
         logger.info(f"Page {page_num+1}: found {len(transactions)} transactions")
 
-        def _tx_kept(tx):
-            return (any(kw.lower() in tx["merchant"].lower() for kw in keep_keywords)
-                    or (keep_credits and tx.get("is_credit")))
+        merchants = [tx["merchant"] for tx in transactions]
+        kw_verdicts, ins_verdicts = _semantic_verdicts_for(
+            keep_keywords, instruction, merchants)
+
+        def _tx_matches(tx, idx):
+            matched = any(kw.lower() in tx["merchant"].lower()
+                          for kw in keep_keywords)
+            if not matched and kw_verdicts is not None and kw_verdicts[idx] is True:
+                matched = True  # Jev verdict: belongs to a user category
+            return matched
+
+        def _tx_kept(tx, idx):
+            matched = _tx_matches(tx, idx)
+            # Direction-aware: 'keep' preserves matches (whitelist, the
+            # historic behaviour); 'redact' removes them. With NO keywords
+            # the base is "rows survive". An instruction match always
+            # redacts; a landlord credit always survives.
+            if keep_keywords:
+                keep = matched if direction == "keep" else not matched
+            else:
+                # No keywords: rows survive unless an instruction removes
+                # them; landlord mode keeps credits only (historic).
+                keep = not keep_credits
+            if ins_verdicts is not None and ins_verdicts[idx] is True:
+                keep = False
+            if keep_credits and tx.get("is_credit"):
+                keep = True
+            return keep
 
         redact_rects = []
-        for tx in transactions:
+        for idx, tx in enumerate(transactions):
             merchant = tx["merchant"]
-            is_kept  = (any(kw.lower() in merchant.lower() for kw in keep_keywords)
-                        or (keep_credits and tx.get("is_credit")))
+            is_kept = _tx_kept(tx, idx)
 
             if is_kept:
                 amt_str = f"£{tx['amount']:.2f}" if tx['amount'] is not None else "£?.??"
@@ -406,8 +466,8 @@ def redact_barclaycard(input_path, output_path, keep_keywords, keep_credits=Fals
         # bbox intersects a redaction rect, so clamp every rect away from kept
         # rows' spans (row padding can bleed into an adjacent row).
         kept_boxes = []
-        for tx in transactions:
-            if _tx_kept(tx):
+        for idx, tx in enumerate(transactions):
+            if _tx_kept(tx, idx):
                 kept_boxes.extend([tx["date_bbox"]] + tx["merchant_bboxes"] +
                                   ([tx["amount_bbox"]] if tx["amount_bbox"] else []) +
                                   tx["e_bboxes"])

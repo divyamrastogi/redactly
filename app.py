@@ -58,6 +58,17 @@ def _analytics_context():
     return {'umami_website_id': os.environ.get('UMAMI_WEBSITE_ID', '')}
 
 
+@app.context_processor
+def _instruction_feature_context():
+    """Expose whether the plain-English instruction box should render.
+
+    Requires the JEV_INSTRUCTIONS flag + API key; unset → the form looks
+    exactly like it always did (flag-off prod ships no new UI).
+    """
+    import judgment
+    return {'instruction_enabled': judgment.enabled('instructions')}
+
+
 @app.after_request
 def _security_headers(response):
     response.headers.setdefault('Strict-Transport-Security',
@@ -743,11 +754,31 @@ _HOMEPAGE_BODY = '''
                         </div>
                     </div>
 
-                    <!-- Keywords -->
+                    <!-- Keywords + direction -->
                     <div class="field">
-                        <label for="keywords">Keep transactions matching <span>(comma-separated)</span></label>
+                        <label for="keywords">Transactions matching <span>(comma-separated)</span></label>
                         <input id="keywords" type="text" placeholder="e.g. rent, Tfl Travel, Hyperoptic">
+                        <div class="mode-group" id="direction-group" style="margin-top: 10px;">
+                            <label class="mode-card checked" data-direction="keep">
+                                <input type="radio" name="direction" value="keep" checked>
+                                <span class="mode-title">Keep matching</span>
+                            </label>
+                            <label class="mode-card" data-direction="redact">
+                                <input type="radio" name="direction" value="redact">
+                                <span class="mode-title">Redact matching</span>
+                            </label>
+                        </div>
+                        <span class="hint" id="direction-hint">Matching transactions stay visible; everything else is redacted</span>
                     </div>
+
+                    {% if instruction_enabled %}
+                    <!-- Plain-English instruction (Jev beta) -->
+                    <div class="field">
+                        <label for="instruction">Or describe what to redact <span>(beta)</span></label>
+                        <input id="instruction" type="text" placeholder="e.g. gambling, crypto, and streaming subscriptions">
+                        <span class="hint">AI matches your description to merchants — works alongside keywords. If the AI is unavailable, only exact keyword matching applies.</span>
+                    </div>
+                    {% endif %}
 
                     <!-- Enhanced privacy -->
                     <div class="toggle-row">
@@ -945,6 +976,19 @@ function getSelectedMode() {
     return checked ? checked.value : 'custom';
 }
 
+function getSelectedDirection() {
+    const checked = document.querySelector('#direction-group input[name="direction"]:checked');
+    return checked ? checked.value : 'keep';
+}
+
+function refreshDirectionHint() {
+    const hint = document.getElementById('direction-hint');
+    if (!hint) return;
+    hint.textContent = (getSelectedDirection() === 'redact')
+        ? 'Matching transactions are blacked out; everything else stays visible'
+        : 'Matching transactions stay visible; everything else is redacted';
+}
+
 function refreshKeywordPlaceholder() {
     const kw = document.getElementById('keywords');
     if (getSelectedMode() === 'landlord') {
@@ -980,9 +1024,19 @@ document.querySelectorAll('#mode-group .mode-card input').forEach(input => {
         track('mode_selected', { mode: getSelectedMode() });
     });
 });
+document.querySelectorAll('#direction-group .mode-card input').forEach(input => {
+    input.addEventListener('change', () => {
+        document.querySelectorAll('#direction-group .mode-card').forEach(card => {
+            card.classList.toggle('checked', card.querySelector('input').checked);
+        });
+        refreshDirectionHint();
+        track('direction_selected', { direction: getSelectedDirection() });
+    });
+});
 document.addEventListener('DOMContentLoaded', () => {
     updateProviderUI();
     applyModeUI();
+    refreshDirectionHint();
 });
 
 // --- File picker ---
@@ -1042,13 +1096,19 @@ async function processFiles() {
     const provider = document.getElementById('provider').value;
     const privacy  = document.getElementById('enhanced_privacy').checked;
     const mode     = getSelectedMode();
+    const direction = getSelectedDirection();
+    const instructionEl = document.getElementById('instruction');
+    const instruction  = instructionEl ? instructionEl.value.trim() : '';
 
     if (!files.length)  { shakeField('drop-zone'); return; }
-    // Keywords are required unless landlord mode is selected (income/balances
-    // are kept automatically; keywords are optional there).
-    if (mode !== 'landlord' && !keywords) { shakeField('keywords'); return; }
+    // Keywords are required unless landlord mode is selected or a plain-
+    // English instruction takes their place (income/balances are kept
+    // automatically in landlord mode; keywords are optional there).
+    if (mode !== 'landlord' && !keywords && !instruction) { shakeField('keywords'); return; }
 
     track('redact_clicked', { mode: mode, provider: provider, file_count: files.length, privacy: privacy });
+    if (instruction) track('instruction_used');   // flag only — never the text
+    if (direction !== 'keep') track('redact_direction', { direction: direction });
 
     const btn     = document.getElementById('submit-btn');
     const btnText = document.getElementById('btn-text');
@@ -1071,6 +1131,8 @@ async function processFiles() {
             fd.append('keywords', keywords);
             fd.append('provider', provider);
             fd.append('mode', mode);
+            fd.append('direction', direction);
+            if (instruction) fd.append('instruction', instruction);
             if (privacy) fd.append('enhanced_privacy', 'on');
 
             const res  = await fetch('/redact', { method: 'POST', body: fd });
@@ -1365,7 +1427,8 @@ class LandlordCardError(ValueError):
     """
 
 
-def process_single_file(file, keywords, provider, enhanced_privacy, mode='custom', keep_credits=False):
+def process_single_file(file, keywords, provider, enhanced_privacy, mode='custom',
+                        keep_credits=False, direction='keep', instruction=None):
     """Process one uploaded PDF.
 
     Returns (redacted_path, total, kept_count, provider_detected, provider_name, beta)
@@ -1377,6 +1440,11 @@ def process_single_file(file, keywords, provider, enhanced_privacy, mode='custom
     + optional keyword whitelist). ``keep_credits`` is forwarded to the bank /
     barclaycard parsers. Raises ``LandlordCardError`` if landlord mode targets a
     credit-card statement (amex_uk / barclaycard) — the caller returns a 400.
+
+    ``direction`` selects the matching polarity: 'keep' (default, whitelist) or
+    'redact' (blacklist — matching rows are removed, the rest survive).
+    ``instruction`` is the optional free-text removal sentence (Jev judgment,
+    always redacts its matches).
 
     ``enhanced_privacy`` on the generic-bank path enables the Presidio PII pass
     (pii_mode='enforce', degrading to 'off' with a warning when presidio isn't
@@ -1459,18 +1527,24 @@ def process_single_file(file, keywords, provider, enhanced_privacy, mode='custom
                         'not installed — applying balance redaction only')
             redacted_path, total, kept = redact_bank_generic(
                 tmp_in, tmp_out, keywords, keep_credits=keep_credits,
-                pii_mode=pii_mode, redact_balances=enhanced_privacy)
+                pii_mode=pii_mode, redact_balances=enhanced_privacy,
+                direction=direction, instruction=instruction)
             kept_count = len(kept)
             beta = True
         elif is_barclaycard:
             redacted_path, total, kept = redact_barclaycard(
-                tmp_in, tmp_out, keywords, keep_credits=keep_credits)
+                tmp_in, tmp_out, keywords, keep_credits=keep_credits,
+                direction=direction, instruction=instruction)
             kept_count   = len(kept)
         elif enhanced_privacy:
-            redacted_path, total = redact_amex_with_privacy(tmp_in, keywords, tmp_out, redact_financial=True)
+            redacted_path, total = redact_amex_with_privacy(
+                tmp_in, keywords, tmp_out, redact_financial=True,
+                direction=direction, instruction=instruction)
             kept_count = -1  # AMEX doesn't return count
         else:
-            redacted_path, total = redact_pdf_generic(tmp_in, keywords, tmp_out, provider)
+            redacted_path, total = redact_pdf_generic(
+                tmp_in, keywords, tmp_out, provider,
+                direction=direction, instruction=instruction)
             kept_count = -1
 
         # Rename with total in filename
@@ -1636,26 +1710,38 @@ def redact_endpoint():
     enhanced = request.form.get('enhanced_privacy') == 'on'
     mode     = request.form.get('mode', 'custom')
     is_landlord = (mode == 'landlord')
+    direction = request.form.get('direction', 'keep')
+    instruction = (request.form.get('instruction', '') or '').strip()
+
+    if direction not in ('keep', 'redact'):
+        return jsonify({'error': 'Invalid direction'}), 400
+
+    import judgment
+    if instruction and not judgment.enabled('instructions'):
+        return jsonify({'error': 'Instruction matching is not enabled on this server'}), 400
 
     if not file.filename:
         return jsonify({'error': 'Empty filename'}), 400
-    # Keywords are required in custom/expense mode. In landlord mode they are
-    # optional (the user may keep only income + balances).
-    if not is_landlord and not keywords:
+    # Keywords are required in custom/expense mode unless an instruction takes
+    # their place. In landlord mode they are optional (the user may keep only
+    # income + balances).
+    if not is_landlord and not keywords and not instruction:
         return jsonify({'error': 'No keywords provided'}), 400
 
     try:
         redacted_path, total, kept_count, provider_detected, detected_provider, beta = process_single_file(
             file, keywords, provider, enhanced,
-            mode=mode, keep_credits=is_landlord
-        )
+            mode=mode, keep_credits=is_landlord,
+            direction=direction, instruction=instruction or None)
         update_usage_counter()
         display_name = os.path.basename(redacted_path)
-        # Observability only: whether the opt-in Jev semantic keyword layer
-        # was in a position to act (flag on + keywords given). Never reflects
-        # or carries statement content.
-        import judgment
-        semantic_enhanced = bool(keywords) and judgment.enabled('semantic_keywords')
+        # Observability only: whether an opt-in Jev semantic layer was in a
+        # position to act (flag on + input given). Never reflects or carries
+        # statement content.
+        semantic_enhanced = (
+            (bool(keywords) and judgment.enabled('semantic_keywords'))
+            or (bool(instruction) and judgment.enabled('instructions'))
+        )
         return jsonify({
             'filename':         display_name,
             'download_url':     f'/download/{redacted_path}',

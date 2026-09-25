@@ -336,18 +336,23 @@ class TransactionExtractor_DEPRECATED:
 
 
 
-def _attach_semantic_verdicts(all_spans, keep_keywords):
+def _attach_semantic_verdicts(all_spans, keep_keywords, instruction=None):
     """Opt-in TypeSafe Jev pass over one page's transaction spans.
 
     Clusters the Y-sorted spans into visual lines (within 2 Y points,
     mirroring the same-line test in the redaction loop below), sends every
-    line's joined text in ONE batched judgment request against the user's
-    keywords, and stamps ``span['semantic']`` True/False onto each span.
-    Spans keep no stamp when the feature is off or the batch failed, so the
-    substring whitelist behaves exactly as before (fail-open).
+    line's joined text in ONE batched judgment request, and stamps
+    ``span['semantic']`` (matches the user's keyword categories) and
+    ``span['instruction']`` (matches the free-text removal instruction)
+    True/False onto each span. Spans keep no stamp when the relevant feature
+    is off or the batch failed, so the substring whitelist behaves exactly
+    as before (fail-open).
     """
     import judgment  # lazy: keeps the default path SDK-free
-    if not keep_keywords or not judgment.enabled('semantic_keywords'):
+    wants_keywords = bool(keep_keywords) and judgment.enabled('semantic_keywords')
+    wants_instruction = bool(instruction and instruction.strip()) \
+        and judgment.enabled('instructions')
+    if not wants_keywords and not wants_instruction:
         return
 
     lines = []
@@ -360,25 +365,38 @@ def _attach_semantic_verdicts(all_spans, keep_keywords):
     judged = [(i, t) for i, t in enumerate(texts) if len(t) >= 2]
     if not judged:
         return
-    verdicts = judgment.semantic_keep_batch(keep_keywords, [t for _, t in judged])
-    if verdicts is None:
-        return
-    for (i, _), verdict in zip(judged, verdicts):
-        for sp in lines[i]['spans']:
-            sp['semantic'] = verdict
+    judged_texts = [t for _, t in judged]
+    if wants_keywords:
+        verdicts = judgment.semantic_keep_batch(keep_keywords, judged_texts)
+        if verdicts is not None:
+            for (i, _), verdict in zip(judged, verdicts):
+                for sp in lines[i]['spans']:
+                    sp['semantic'] = verdict
+    if wants_instruction:
+        iverdicts = judgment.semantic_instruction_batch(instruction, judged_texts)
+        if iverdicts is not None:
+            for (i, _), verdict in zip(judged, iverdicts):
+                for sp in lines[i]['spans']:
+                    sp['instruction'] = verdict
 
 
 def redact_pdf_generic(file_path: str, keep_keywords: List[str],
-                      output_filename: str, provider: str = 'auto') -> Tuple[str, float]:
+                      output_filename: str, provider: str = 'auto',
+                      direction: str = 'keep', instruction: str = None) -> Tuple[str, float]:
     """
     Simple span-by-span redaction approach that works reliably.
-    
+
     Args:
         file_path: Path to input PDF
         keep_keywords: List of keywords to whitelist
         output_filename: Name for output file
         provider: Provider name or 'auto' for auto-detection
-    
+        direction: 'keep' (default) keeps matching spans and redacts the rest;
+            'redact' inverts it — matching spans are removed, the rest survive.
+            The returned total is always the sum of KEPT amounts.
+        instruction: Optional free-text removal sentence; spans whose line the
+            Jev instruction judgment matches are always redacted.
+
     Returns:
         Tuple of (output_path, total_remaining)
     """
@@ -430,8 +448,9 @@ def redact_pdf_generic(file_path: str, keep_keywords: List[str],
         all_spans.sort(key=lambda x: x['y'])
 
         # Opt-in semantic keyword matching: one batched Jev request judges
-        # each visual line against the user's keywords (no-op by default)
-        _attach_semantic_verdicts(all_spans, keep_keywords)
+        # each visual line against the user's keywords and removal
+        # instruction (no-op by default)
+        _attach_semantic_verdicts(all_spans, keep_keywords, instruction)
         
         # Process each span and determine if it should be redacted
         for span_data in all_spans:
@@ -465,9 +484,21 @@ def redact_pdf_generic(file_path: str, keep_keywords: List[str],
             # Jev feature flag is on and the batch succeeded)
             if not should_keep_span and span_data.get('semantic') is True:
                 should_keep_span = True
-            
-            # If this span is part of a whitelisted transaction, add amount to total
-            if should_keep_span:
+
+            # Direction-aware decision: 'keep' preserves matches (whitelist,
+            # the historic behaviour); 'redact' removes them and preserves
+            # the rest. With NO keywords the base is "spans survive" — only
+            # an instruction match removes them.
+            if keep_keywords:
+                keep_span = (should_keep_span if direction == 'keep'
+                             else not should_keep_span)
+            else:
+                keep_span = True
+            if span_data.get('instruction') is True:
+                keep_span = False
+
+            # If this span belongs to a kept transaction, add its amount to the total
+            if keep_span:
                 # Check if this span contains an amount
                 for pattern in currency_patterns:
                     match = pattern.search(span_text)

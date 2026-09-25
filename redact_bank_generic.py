@@ -404,6 +404,32 @@ def _semantic_keyword_verdicts(descriptions, keep_keywords):
     return out
 
 
+def _instruction_verdicts(descriptions, instruction):
+    """One batched Jev judgment per transaction-group description against the
+    user's free-text removal instruction.
+
+    Returns a list aligned with ``descriptions`` (True = matches the
+    instruction), or None when the feature is off or the batch failed — the
+    caller must then make NO extra redactions. Fail-open direction is
+    inverted here on purpose: redaction decisions may never be guessed.
+    """
+    import judgment  # lazy: keeps the default path SDK-free
+
+    if not instruction or not judgment.enabled('instructions'):
+        return None
+    judged = [(i, d) for i, d in enumerate(descriptions) if d]
+    if not judged:
+        return None
+    verdicts = judgment.semantic_instruction_batch(
+        instruction, [d for _, d in judged])
+    if verdicts is None:
+        return None
+    out = [None] * len(descriptions)
+    for (i, _), v in zip(judged, verdicts):
+        out[i] = v
+    return out
+
+
 def _redact_balance_amounts(page, rows, columns, header_y):
     """Financial-summary redaction: remove amount-shaped spans that reveal the
     account's balances rather than the kept transactions.
@@ -424,7 +450,8 @@ def _redact_balance_amounts(page, rows, columns, header_y):
                 page.add_redact_annot(_pad_rect(s["bbox"]), fill=(0, 0, 0))
 
 
-def _redact_dateless(page, rows, columns, header_y, keep_keywords, keep_credits, kept_rows):
+def _redact_dateless(page, rows, columns, header_y, keep_keywords, keep_credits,
+                     kept_rows, direction='keep', instruction=None):
     """Redact a dateless (Wise-style) transaction table.
 
     A transaction GROUP is a row carrying at least one amount in a money column
@@ -456,6 +483,7 @@ def _redact_dateless(page, rows, columns, header_y, keep_keywords, keep_credits,
         for g in groups
     ]
     semantic = _semantic_keyword_verdicts(descriptions, keep_keywords)
+    instruction_v = _instruction_verdicts(descriptions, instruction)
 
     for gi, g in enumerate(groups):
         description = descriptions[gi]
@@ -465,7 +493,22 @@ def _redact_dateless(page, rows, columns, header_y, keep_keywords, keep_credits,
             is_kw = True  # Jev verdict: belongs to one of the user's categories
         is_credit = _is_credit(g["head"], columns) if keep_credits else False
         amount = _row_amount(g["head"])
-        if is_kw or is_credit:
+        # Direction-aware decision: 'keep' preserves matches (whitelist, the
+        # historic behaviour); 'redact' removes matches and preserves the
+        # rest. With NO keywords the base is "rows survive" — unless landlord
+        # mode, where only credits survive. An instruction match always
+        # redacts; a landlord credit wins (checked last).
+        if keep_keywords:
+            keep_row = (is_kw if direction == 'keep' else not is_kw) or is_credit
+        else:
+            # No keywords: non-landlord rows survive unless an instruction
+            # removes them; landlord mode keeps credits only (historic).
+            keep_row = not keep_credits
+        if instruction_v is not None and instruction_v[gi] is True:
+            keep_row = False
+        if is_credit:
+            keep_row = True
+        if keep_row:
             kept_rows.append({"description": description, "amount": amount})
             logger.info(f"  KEEP   {description} | £{amount:.2f}")
         else:
@@ -476,7 +519,7 @@ def _redact_dateless(page, rows, columns, header_y, keep_keywords, keep_credits,
 
 
 def _redact_page(page, keep_keywords, kept_rows, keep_credits=False,
-                 redact_balances=False):
+                 redact_balances=False, direction='keep', instruction=None):
     """Redact non-keyword transactions on one page.
 
     Returns the detected transaction ``header_y`` (bottom of the header row),
@@ -508,7 +551,8 @@ def _redact_page(page, keep_keywords, kept_rows, keep_credits=False,
         # money row, optionally followed by close-by tail lines underneath
         # (date + transaction reference, wrapped description).
         _redact_dateless(page, rows, columns, header_y,
-                         keep_keywords, keep_credits, kept_rows)
+                         keep_keywords, keep_credits, kept_rows,
+                         direction=direction, instruction=instruction)
         if redact_balances:
             _redact_balance_amounts(page, rows, columns, header_y)
         page.apply_redactions()
@@ -537,6 +581,7 @@ def _redact_page(page, keep_keywords, kept_rows, keep_credits=False,
         for g in groups
     ]
     semantic = _semantic_keyword_verdicts(descriptions, keep_keywords)
+    instruction_v = _instruction_verdicts(descriptions, instruction)
 
     for gi, g in enumerate(groups):
         description = descriptions[gi]
@@ -548,7 +593,21 @@ def _redact_page(page, keep_keywords, kept_rows, keep_credits=False,
             is_kw = True  # Jev verdict: belongs to one of the user's categories
         is_credit = _is_credit(g["cells"], columns) if keep_credits else False
         amount = _row_amount(g["cells"])
-        if is_kw or is_credit:
+        # Direction-aware decision (see _redact_dateless): 'keep' preserves
+        # matches, 'redact' removes them; with NO keywords the base is "rows
+        # survive" (landlord: credits only). An instruction match always
+        # redacts; a landlord credit wins.
+        if keep_keywords:
+            keep_row = (is_kw if direction == 'keep' else not is_kw) or is_credit
+        else:
+            # No keywords: non-landlord rows survive unless an instruction
+            # removes them; landlord mode keeps credits only (historic).
+            keep_row = not keep_credits
+        if instruction_v is not None and instruction_v[gi] is True:
+            keep_row = False
+        if is_credit:
+            keep_row = True
+        if keep_row:
             kept_rows.append({"description": description, "amount": amount})
             logger.info(f"  KEEP   {description} | £{amount:.2f}")
         else:
@@ -617,9 +676,18 @@ def _apply_pii_pass(page, page_num, header_y, pii_mode,
 
 
 def redact_bank_generic(input_path, output_path, keep_keywords, keep_credits=False,
-                        pii_mode="off", redact_balances=False):
+                        pii_mode="off", redact_balances=False,
+                        direction="keep", instruction=None):
     """Redact every transaction not matching ``keep_keywords`` from a generic UK
     bank statement. Returns (output_path, total_of_kept_amounts, kept_rows).
+
+    ``direction`` selects the matching polarity: ``"keep"`` (default) is the
+    historic whitelist — matching rows survive, everything else is redacted;
+    ``"redact"`` inverts it — matching rows are redacted and the rest survive.
+    ``instruction`` (optional, requires the JEV_INSTRUCTIONS flag + API key)
+    is the user's free-text removal sentence; rows its batched Jev judgment
+    matches are always redacted. Both fail open: an API failure degrades to
+    exact substring matching only — deletion decisions are never guessed.
 
     When ``keep_credits`` is True (landlord mode), credit rows (money in) are
     always kept in addition to keyword matches — keywords may be empty.
@@ -650,7 +718,8 @@ def redact_bank_generic(input_path, output_path, keep_keywords, keep_credits=Fal
         page = doc[page_num]
         header_y = _redact_page(page, keep_keywords, kept_rows,
                                 keep_credits=keep_credits,
-                                redact_balances=redact_balances)
+                                redact_balances=redact_balances,
+                                direction=direction, instruction=instruction)
         if pii_mode in ("report", "enforce"):
             _apply_pii_pass(page, page_num, header_y, pii_mode,
                             structured_only=(header_y is None and seen_header),

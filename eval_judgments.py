@@ -162,6 +162,81 @@ def eval_name_disambiguation():
         correct / len(NAME_CASES), judgment.PERSON_CONFIDENCE, low_conf))
 
 
+def eval_instruction_thresholds():
+    """Free-text removal instructions over labeled transaction rows."""
+    INSTRUCTION_CASES = [
+        ("BET365 CASINO", "gambling and crypto", True),
+        ("CRYPTO.COM PURCHASE", "gambling and crypto", True),
+        ("SKY BET LIMITED", "gambling and crypto", True),
+        ("TESCO STORES 3487", "gambling and crypto", False),
+        ("NETFLIX.COM", "gambling and crypto", False),
+        ("BET365 CASINO", "streaming subscriptions", False),
+        ("NETFLIX.COM", "streaming subscriptions", True),
+        ("SPOTIFY UK", "streaming subscriptions", True),
+        ("DISNEY+ LONDON", "streaming subscriptions", True),
+        ("SHELL GSTATIONS LONDON", "streaming subscriptions", False),
+        ("VIRGIN MEDIA", "streaming subscriptions", False),
+        ("PRET A MANGER LONDON", "coffee shops and takeaways", True),
+        ("STARBUCKS CARD LONDON", "coffee shops and takeaways", True),
+        ("PAYROLL ACME LTD SALARY", "coffee shops and takeaways", False),
+    ]
+    by_instruction = {}
+    for desc, instruction, _ in INSTRUCTION_CASES:
+        by_instruction.setdefault(instruction, []).append(desc)
+
+    probs = []
+    for instruction, descriptions in by_instruction.items():
+        state = {
+            "instruction": instruction,
+            "lines": [{"n": i, "description": d} for i, d in enumerate(descriptions)],
+        }
+        questions = {}
+        for i in range(len(descriptions)):
+            questions["line_{}".format(i)] = judgment.Noul(
+                instructions=(
+                    "Transaction description `lines[{i}].description` from the user's "
+                    "own bank or credit card statement. The user asked to remove "
+                    "transactions matching their instruction `instruction`. Does this "
+                    "transaction match what the user described? Judge the merchant's "
+                    "core business, not exact words ('Bet365 Casino' matches 'gambling'; "
+                    "'TESCO' does not). Unclear or borderline cases must be false — "
+                    "this decides what gets permanently redacted."
+                ).format(i=i),
+                criteria={
+                    "true": "The transaction clearly matches the user's removal instruction.",
+                    "false": "It does not match, or that is unclear.",
+                },
+            )
+        answers = judgment.decide_batch(state, questions)
+        if answers is None:
+            return None
+        for i, desc in enumerate(descriptions):
+            expected = next(e for d, ins, e in INSTRUCTION_CASES
+                            if d == desc and ins == instruction)
+            probs.append((desc, instruction, expected,
+                          getattr(answers["line_{}".format(i)], "noul", None)))
+
+    print("\n== Part A3: plain-English instructions ({} labeled cases) ==".format(
+        len(INSTRUCTION_CASES)))
+    print("{:>9}  {:>7}  {}".format("threshold", "acc", "errors"))
+    best = (None, -1.0)
+    for threshold in (0.5, 0.6, 0.7, 0.75, 0.8, 0.9):
+        correct, errors = 0, []
+        for desc, instruction, expected, p in probs:
+            if p is None:
+                continue
+            got = p >= threshold
+            correct += got == expected
+            if got != expected:
+                errors.append("{}~'{}' p={:.2f}".format(desc, instruction, p))
+        acc = correct / len(probs)
+        if acc > best[1]:
+            best = (threshold, acc)
+        print("{:>9.2f}  {:>6.0%}  {}".format(threshold, acc, "; ".join(errors) or "-"))
+    print("  best threshold: {} ({:.0%}) — module default: {}".format(
+        best[0], best[1], judgment.KEYWORD_THRESHOLD))
+
+
 # ── Part B: real statement fixtures, baseline vs flags-on ───────────────────
 EVAL_KEYWORDS = ["rent", "tfl", "uber", "salary"]
 
@@ -226,6 +301,7 @@ def main():
 
     eval_keyword_thresholds()
     eval_name_disambiguation()
+    eval_instruction_thresholds()
     if not args.skip_statements:
         eval_statement_fixtures()
     print("\nDone. Tune judgment.py thresholds on these numbers before enabling flags in prod.")
