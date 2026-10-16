@@ -1,4 +1,4 @@
-from flask import Flask, request, send_file, after_this_request, render_template_string, jsonify, abort, Response
+from flask import Flask, request, send_file, send_from_directory, after_this_request, render_template_string, jsonify, abort, Response
 import os
 import re
 import json
@@ -1569,6 +1569,16 @@ def index():
         canonical=_base_url() + '/',
         usage_count=usage_count,
         providers=providers)
+
+
+@app.route('/beta', methods=['GET'])
+def beta():
+    """In-browser (WebAssembly) redaction beta.
+
+    The page and its engine module are fully static — the PDF is processed
+    client-side and never reaches this server. Served from static/beta/.
+    """
+    return send_from_directory(os.path.join(app.root_path, 'static', 'beta'), 'index.html')
 
 
 @app.route('/guides/<slug>')

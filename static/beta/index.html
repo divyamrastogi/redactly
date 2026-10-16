@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Beta: Redact Statements In Your Browser — Redactly</title>
+    <meta name="description" content="Beta: the Redactly statement redaction engine running entirely in your browser via WebAssembly. Your PDF never leaves your device.">
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%234A9FD4'/%3E%3Crect x='7' y='9' width='18' height='3.4' rx='1.7' fill='white'/%3E%3Crect x='7' y='19.6' width='11' height='3.4' rx='1.7' fill='white' opacity='0.55'/%3E%3Crect x='7' y='14.3' width='16' height='3.9' rx='1.4' fill='black' opacity='0.82'/%3E%3C/svg%3E">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+        :root {
+            --bg:             #FAFBFC;
+            --bg-card:        #FFFFFF;
+            --bg-elevated:    #F2F6F9;
+            --border:         #E5E7EB;
+            --border-focus:   rgba(74,159,212,0.6);
+            --text:           #1F2A37;
+            --text-muted:     #5B6572;
+            --text-faint:     #9AA4B2;
+            --accent:         #4A9FD4;
+            --accent-strong:  #3A8FC4;
+            --accent-grad:    linear-gradient(135deg,#4A9FD4,#6BB5E0);
+            --tint:           rgba(74,159,212,0.07);
+            --glow:           0 4px 12px rgba(74,159,212,0.30);
+            --success:        #059669;
+            --success-bg:     rgba(5,150,105,0.08);
+            --success-border: rgba(5,150,105,0.22);
+            --danger:         #DC2626;
+            --danger-bg:      rgba(220,38,38,0.07);
+            --radius:         14px;
+        }
+
+        body {
+            font-family: 'Poppins', system-ui, -apple-system, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            line-height: 1.55;
+            min-height: 100vh;
+        }
+
+        .wrap { max-width: 880px; margin: 0 auto; padding: 0 20px 64px; }
+
+        header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 18px 0;
+        }
+        .brand { display: flex; align-items: center; gap: 10px; text-decoration: none; color: var(--text); font-weight: 700; font-size: 19px; }
+        .beta-pill {
+            font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
+            background: var(--tint); color: var(--accent-strong);
+            border: 1px solid rgba(74,159,212,0.35);
+            padding: 3px 10px; border-radius: 999px;
+        }
+        .home-link { font-size: 14px; color: var(--text-muted); text-decoration: none; }
+        .home-link:hover { color: var(--accent-strong); }
+
+        .hero { text-align: center; padding: 34px 0 26px; }
+        .hero h1 { font-size: clamp(26px, 4.5vw, 38px); font-weight: 700; letter-spacing: -0.02em; }
+        .hero h1 em { font-style: normal; background: var(--accent-grad); -webkit-background-clip: text; background-clip: text; color: transparent; }
+        .hero p { max-width: 560px; margin: 12px auto 0; color: var(--text-muted); font-size: 15.5px; }
+
+        .privacy-strip {
+            display: flex; gap: 8px; align-items: flex-start; justify-content: center;
+            margin: 18px auto 0; max-width: 640px;
+            background: var(--success-bg); border: 1px solid var(--success-border);
+            color: #065F46; border-radius: 12px; padding: 10px 16px; font-size: 13.5px; text-align: left;
+        }
+
+        .card {
+            background: var(--bg-card); border: 1px solid var(--border);
+            border-radius: var(--radius); padding: 26px;
+            box-shadow: 0 1px 3px rgba(16,24,40,0.04);
+            margin-top: 26px;
+        }
+
+        .dropzone {
+            border: 2px dashed var(--border); border-radius: 12px;
+            padding: 34px 20px; text-align: center; cursor: pointer;
+            transition: border-color .15s, background .15s;
+            color: var(--text-muted);
+        }
+        .dropzone:hover, .dropzone.drag { border-color: var(--accent); background: var(--tint); }
+        .dropzone .dz-icon { font-size: 30px; }
+        .dropzone strong { color: var(--text); }
+        .dropzone .picked { color: var(--text); font-weight: 600; }
+        .dropzone .hint { font-size: 12.5px; color: var(--text-faint); margin-top: 4px; }
+
+        .options { display: grid; gap: 16px; margin-top: 20px; }
+        .opt label.small { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; color: var(--text); }
+        input[type="text"] {
+            width: 100%; font: inherit; font-size: 14.5px;
+            padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px;
+            background: var(--bg-card); color: var(--text);
+        }
+        input[type="text"]:focus { outline: none; border-color: var(--border-focus); box-shadow: 0 0 0 3px var(--tint); }
+
+        .seg { display: inline-flex; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+        .seg button {
+            font: inherit; font-size: 13.5px; font-weight: 500; border: 0; cursor: pointer;
+            padding: 8px 16px; background: var(--bg-card); color: var(--text-muted);
+        }
+        .seg button.active { background: var(--accent); color: #fff; }
+        .seg-note { font-size: 12px; color: var(--text-faint); margin-top: 5px; }
+
+        .checks { display: flex; flex-wrap: wrap; gap: 18px; }
+        .chk { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: var(--text-muted); }
+        .chk input { accent-color: var(--accent); width: 16px; height: 16px; }
+
+        .run {
+            width: 100%; margin-top: 22px; font: inherit; font-weight: 600; font-size: 15.5px;
+            color: #fff; background: var(--accent-grad); border: 0; border-radius: 12px;
+            padding: 13px; cursor: pointer; box-shadow: var(--glow);
+            transition: transform .12s, box-shadow .12s, opacity .12s;
+        }
+        .run:hover:not(:disabled) { transform: translateY(-1px); }
+        .run:disabled { opacity: 0.55; cursor: not-allowed; box-shadow: none; }
+
+        .status { margin-top: 14px; font-size: 13.5px; color: var(--text-muted); text-align: center; min-height: 20px; }
+        .status.err { color: var(--danger); background: var(--danger-bg); border-radius: 10px; padding: 8px 12px; }
+        .spinner {
+            display: inline-block; width: 13px; height: 13px; vertical-align: -2px; margin-right: 7px;
+            border: 2px solid var(--tint); border-top-color: var(--accent); border-radius: 50%;
+            animation: spin .7s linear infinite;
+        }
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .results { display: none; }
+        .results.show { display: block; }
+        .stats { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 16px; }
+        .stat {
+            flex: 1 1 120px; background: var(--bg-elevated); border-radius: 12px; padding: 12px 16px;
+        }
+        .stat .v { font-size: 21px; font-weight: 700; }
+        .stat .k { font-size: 12px; color: var(--text-muted); }
+        .stat.total .v { color: var(--success); }
+
+        .rows { border: 1px solid var(--border); border-radius: 12px; overflow: hidden; margin-bottom: 16px; max-height: 300px; overflow-y: auto; }
+        .row { display: flex; justify-content: space-between; gap: 14px; padding: 9px 14px; font-size: 13.5px; border-bottom: 1px solid var(--border); }
+        .row:last-child { border-bottom: 0; }
+        .row .d { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .row .a { font-weight: 600; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+        .previews { display: grid; gap: 14px; max-height: 520px; overflow-y: auto; padding: 4px; }
+        .previews img { width: 100%; border: 1px solid var(--border); border-radius: 10px; }
+        .pg-label { font-size: 12px; color: var(--text-faint); margin: 2px 0 -6px 4px; }
+
+        .dl {
+            display: block; width: 100%; margin-top: 18px; text-align: center; text-decoration: none;
+            font: inherit; font-weight: 600; font-size: 15px; color: #fff;
+            background: var(--success); border: 0; border-radius: 12px; padding: 13px; cursor: pointer;
+        }
+        .dl:hover { filter: brightness(1.05); }
+
+        footer { margin-top: 34px; text-align: center; font-size: 12.5px; color: var(--text-faint); }
+        footer a { color: var(--text-muted); }
+        .engine-note { margin-top: 6px; }
+    </style>
+</head>
+<body>
+<div class="wrap">
+    <header>
+        <a class="brand" href="/">
+            <svg width="26" height="26" viewBox="0 0 32 32" aria-hidden="true"><rect width="32" height="32" rx="9" fill="#4A9FD4"/><rect x="7" y="9" width="18" height="3.4" rx="1.7" fill="white"/><rect x="7" y="19.6" width="11" height="3.4" rx="1.7" fill="white" opacity="0.55"/><rect x="7" y="14.3" width="16" height="3.9" rx="1.4" fill="black" opacity="0.82"/></svg>
+            Redactly <span class="beta-pill">beta</span>
+        </a>
+        <a class="home-link" href="/">&larr; server version</a>
+    </header>
+
+    <section class="hero">
+        <h1>Redact statements <em>entirely in your browser</em></h1>
+        <p>The same layout-driven redaction engine as the server version, running locally as WebAssembly. Experimental &mdash; check the output carefully.</p>
+        <div class="privacy-strip">
+            <span>&#128274;</span>
+            <span>Your PDF never leaves this device. On first use, the PDF engine (~7&nbsp;MB, MuPDF compiled to WebAssembly) downloads from a CDN and is cached; every redaction after that runs fully offline.</span>
+        </div>
+    </section>
+
+    <section class="card">
+        <div class="dropzone" id="dropzone" role="button" tabindex="0" aria-label="Choose a PDF statement">
+            <div class="dz-icon">&#128196;</div>
+            <div id="dz-text"><strong>Choose a PDF statement</strong> or drop it here</div>
+            <div class="hint">100% local &mdash; nothing is uploaded</div>
+        </div>
+        <input type="file" id="file" accept="application/pdf,.pdf" hidden>
+
+        <div class="options">
+            <div class="opt">
+                <label class="small" for="keywords">Keywords (comma-separated)</label>
+                <input type="text" id="keywords" placeholder="e.g. TFL, Shell, rent" autocomplete="off">
+            </div>
+            <div class="opt">
+                <label class="small">Keyword direction</label>
+                <div class="seg" id="direction">
+                    <button type="button" data-v="keep" class="active">Keep matching</button>
+                    <button type="button" data-v="redact">Redact matching</button>
+                </div>
+                <div class="seg-note" id="dir-note">Matching rows stay visible; everything else is blacked out.</div>
+            </div>
+            <div class="checks">
+                <label class="chk"><input type="checkbox" id="credits"> Landlord mode &mdash; always keep money-in rows</label>
+                <label class="chk"><input type="checkbox" id="balances"> Remove balances &amp; summary amounts</label>
+            </div>
+        </div>
+
+        <button class="run" id="run" disabled>Redact locally</button>
+        <div class="status" id="status"></div>
+    </section>
+
+    <section class="card results" id="results">
+        <div class="stats">
+            <div class="stat"><div class="v" id="st-kept">0</div><div class="k">rows kept</div></div>
+            <div class="stat"><div class="v" id="st-redacted">0</div><div class="k">transactions redacted</div></div>
+            <div class="stat total"><div class="v" id="st-total">&pound;0.00</div><div class="k">total kept</div></div>
+        </div>
+        <div class="rows" id="rows"></div>
+        <div id="page-notes" class="seg-note"></div>
+        <div class="previews" id="previews"></div>
+        <button class="dl" id="dl">Download redacted PDF</button>
+    </section>
+
+    <footer>
+        <div>Beta &mdash; generic bank engine only. The Jev semantic layer, PII pass and provider-specific modes run on the <a href="/">server version</a>.</div>
+        <div class="engine-note">Engine: MuPDF compiled to WebAssembly (AGPL), executed locally in this tab.</div>
+    </footer>
+</div>
+
+<script type="module">
+// Root-absolute: /beta is served by Flask while this file also lives under
+// /static/beta/ — the document URL differs between the two, so './' would break.
+import { redactBankGeneric, renderPagePng, setMupdfModule } from '/static/beta/engine.js';
+
+// The engine is lazy: ~7 MB of WebAssembly fetched from jsDelivr on first use
+// only, then served from the browser cache.
+const MUPDF_CDN = 'https://cdn.jsdelivr.net/npm/mupdf@1.28.1/dist/mupdf.js';
+
+const $ = (id) => document.getElementById(id);
+const dropzone = $('dropzone'), fileInput = $('file'), dzText = $('dz-text');
+const runBtn = $('run'), statusEl = $('status'), results = $('results');
+
+let file = null, outBytes = null, direction = 'keep';
+let mupdfMod = null;
+
+// ── file picking ────────────────────────────────────────────────────────────
+dropzone.addEventListener('click', () => fileInput.click());
+dropzone.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') fileInput.click(); });
+['dragover', 'dragenter'].forEach((ev) => dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.add('drag'); }));
+['dragleave', 'drop'].forEach((ev) => dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.remove('drag'); }));
+dropzone.addEventListener('drop', (e) => { const f = e.dataTransfer.files?.[0]; if (f) pick(f); });
+fileInput.addEventListener('change', () => { if (fileInput.files[0]) pick(fileInput.files[0]); });
+
+function pick(f) {
+    if (!/\.pdf$/i.test(f.name) && f.type !== 'application/pdf') {
+        setStatus('Please choose a PDF file.', true); return;
+    }
+    file = f;
+    dzText.innerHTML = `<span class="picked">${escapeHtml(f.name)}</span> (${(f.size / 1024).toFixed(0)} KB)`;
+    runBtn.disabled = false;
+    setStatus('');
+}
+
+// ── options ─────────────────────────────────────────────────────────────────
+const DIR_NOTES = {
+    keep: 'Matching rows stay visible; everything else is blacked out.',
+    redact: 'Matching rows are blacked out; everything else stays visible.',
+};
+$('direction').addEventListener('click', (e) => {
+    const btn = e.target.closest('button'); if (!btn) return;
+    direction = btn.dataset.v;
+    [...$('direction').children].forEach((b) => b.classList.toggle('active', b === btn));
+    $('dir-note').textContent = DIR_NOTES[direction];
+});
+
+function setStatus(msg, isErr = false, busy = false) {
+    statusEl.className = 'status' + (isErr ? ' err' : '');
+    statusEl.innerHTML = busy ? `<span class="spinner"></span>${msg}` : escapeHtml(msg);
+}
+
+async function ensureEngine() {
+    if (mupdfMod) return;
+    setStatus('Downloading PDF engine (first run only, ~7 MB)…', false, true);
+    mupdfMod = await import(/* @vite-ignore */ MUPDF_CDN);
+    setMupdfModule(mupdfMod);
+}
+
+// ── run ─────────────────────────────────────────────────────────────────────
+runBtn.addEventListener('click', async () => {
+    if (!file) return;
+    runBtn.disabled = true;
+    results.classList.remove('show');
+    try {
+        await ensureEngine();
+        setStatus('Reading PDF locally…', false, true);
+        const bytes = new Uint8Array(await file.arrayBuffer());
+
+        let doc;
+        try {
+            doc = mupdfMod.PDFDocument.openDocument(bytes, 'application/pdf');
+        } catch (err) {
+            throw new Error('This PDF could not be opened' + (/passw|encrypt/i.test(String(err)) ? ' — it appears to be password-protected.' : '.'));
+        }
+
+        setStatus('Redacting…', false, true);
+        await new Promise((r) => setTimeout(r, 30)); // let the status paint
+
+        const keywords = $('keywords').value.split(',').map((s) => s.trim()).filter(Boolean);
+        const t0 = performance.now();
+        const res = redactBankGeneric(doc, {
+            keywords,
+            keepCredits: $('credits').checked,
+            redactBalances: $('balances').checked,
+            direction,
+        });
+
+        if (res.keptRows.length === 0 && res.redacted === 0) {
+            setStatus('No transaction table detected in this PDF — nothing was changed. This beta handles bank/card statement layouts; try the server version for more providers.', true);
+            runBtn.disabled = false;
+            return;
+        }
+
+        outBytes = doc.saveToBuffer('garbage=compact,compress=yes').asUint8Array();
+
+        // results
+        $('st-kept').textContent = res.keptRows.length;
+        $('st-redacted').textContent = res.redacted;
+        $('st-total').textContent = '£' + res.total.toFixed(2);
+        $('rows').innerHTML = res.keptRows.length
+            ? res.keptRows.map((r) =>
+                `<div class="row"><span class="d">${escapeHtml(r.description) || '&nbsp;'}</span><span class="a">£${r.amount.toFixed(2)}</span></div>`).join('')
+            : '<div class="row"><span class="d">No rows kept.</span></div>';
+        const untouched = res.pageReports.filter((p) => !p.headerFound).length;
+        const pages = doc.countPages();
+        $('page-notes').textContent = untouched
+            ? `${untouched} of ${pages} page(s) had no transaction table and were left untouched (header/terms pages stay readable).`
+            : `All ${pages} page(s) processed.`;
+
+        // previews
+        const previews = $('previews');
+        previews.innerHTML = '';
+        const scale = Math.min(1.5, 900 / (doc.loadPage(0).getBounds()[2] || 595));
+        for (let i = 0; i < Math.min(pages, 8); i++) {
+            const png = renderPagePng(doc, i, scale);
+            const url = URL.createObjectURL(new Blob([png], { type: 'image/png' }));
+            const label = document.createElement('div');
+            label.className = 'pg-label';
+            label.textContent = `Page ${i + 1}`;
+            const img = new Image();
+            img.src = url; img.alt = `Redacted page ${i + 1}`;
+            previews.append(label, img);
+        }
+        if (pages > 8) {
+            const more = document.createElement('div');
+            more.className = 'pg-label';
+            more.textContent = `+ ${pages - 8} more page(s) in the download`;
+            previews.append(more);
+        }
+
+        results.classList.add('show');
+        setStatus(`Done in ${(performance.now() - t0).toFixed(0)} ms — reviewed the preview? Download below.`);
+    } catch (err) {
+        console.error(err);
+        setStatus(String(err.message || err), true);
+    } finally {
+        runBtn.disabled = false;
+    }
+});
+
+// ── download ────────────────────────────────────────────────────────────────
+$('dl').addEventListener('click', () => {
+    if (!outBytes) return;
+    const url = URL.createObjectURL(new Blob([outBytes], { type: 'application/pdf' }));
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'redacted_' + (file?.name || 'statement.pdf');
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 5000);
+});
+
+function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+</script>
+</body>
+</html>
